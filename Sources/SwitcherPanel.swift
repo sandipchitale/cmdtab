@@ -13,6 +13,15 @@ class OverlayPanel: NSPanel {
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        // The window itself stays light; contentAppearance styles what's inside. A dark window gets a hard dark
+        // outline traced around its shadow shape, which shows up as artifacts at the rounded corners.
+        appearance = NSAppearance(named: .aqua)
+    }
+
+    /// The appearance of the panel's content.
+    var contentAppearance: NSAppearance {
+        get { contentView?.effectiveAppearance ?? NSApp.effectiveAppearance }
+        set { contentView?.appearance = newValue }
     }
 
     override var canBecomeKey: Bool { false }
@@ -61,6 +70,8 @@ final class SwitcherPanel: OverlayPanel {
             glass.cornerRadius = cornerRadius
             glass.contentView = content
             contentView = glass
+            // The glass draws its own edge; the window shadow adds a dark outline that bunches up at the corners.
+            hasShadow = false
         } else {
             let background = NSVisualEffectView()
             background.material = .popover
@@ -100,12 +111,12 @@ final class SwitcherPanel: OverlayPanel {
         let area = NSScreen.containing(mouse).visibleFrame
 
         switch Settings.appearance {
-        case "light": appearance = NSAppearance(named: .aqua)
-        case "dark": appearance = NSAppearance(named: .darkAqua)
-        default: appearance = nil // follow the system
+        case "light": contentAppearance = NSAppearance(named: .aqua)!
+        case "dark": contentAppearance = NSAppearance(named: .darkAqua)!
+        default: contentAppearance = NSApp.effectiveAppearance // follow the system
         }
         if let tint {
-            effectiveAppearance.performAsCurrentDrawingAppearance {
+            contentAppearance.performAsCurrentDrawingAppearance {
                 tint.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.55).cgColor
             }
         }
@@ -189,7 +200,7 @@ final class SwitcherPanel: OverlayPanel {
         let title = windowsShown[index].title
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.isVisible else { return }
-            self.tooltip.show(title, near: NSEvent.mouseLocation, appearance: self.effectiveAppearance)
+            self.tooltip.show(title, near: NSEvent.mouseLocation, appearance: self.contentAppearance)
             self.addChildWindow(self.tooltip, ordered: .above)
         }
         pendingTooltip = work
@@ -410,7 +421,7 @@ final class TooltipWindow: OverlayPanel {
 
     /// Shows `text` just below and right of `point` (screen coordinates), kept on screen.
     func show(_ text: String, near point: NSPoint, appearance: NSAppearance) {
-        self.appearance = appearance
+        contentAppearance = appearance
         label.stringValue = text
         let textSize = label.intrinsicContentSize
         let size = NSSize(width: min(textSize.width + 14, 600), height: textSize.height + 6)
