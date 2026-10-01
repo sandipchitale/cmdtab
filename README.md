@@ -22,7 +22,7 @@ A tiny menu bar app that makes **Cmd+Tab switch between windows** the way Alt+Ta
 | M | Minimize / restore the selected window |
 | H | Hide / show the selected window's app |
 | Esc | Cancel |
-| Mouse hover / click | Select / switch |
+| Mouse hover / click | Select / switch (in icon view, hovering also shows the window title) |
 
 A quick Cmd+Tab tap jumps straight to the previous window without showing the switcher. Windows are listed in most-recently-used order, with minimized windows last.
 
@@ -30,8 +30,10 @@ W, Q, M and H act on the selected tile and keep the switcher open, so you can ti
 
 ## Views
 
-- **App icons** (default): one app icon per window. The selected window's title appears above the grid.
-- **Window thumbnails**: a live snapshot of each window, with the app icon and window title above it.
+- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a soft rounded highlight with its app name centered below it. Rest the pointer on an icon to see that window's title in a tooltip.
+- **Window thumbnails**: a live snapshot of each window, with the app icon and window title above it. The selected tile gets an accent-colored border.
+
+On macOS 26 and later, the switcher panel uses the same Liquid Glass material as the native switcher. Earlier versions get a blurred, tinted panel instead. Either way it follows the **Appearance** setting.
 
 Choose between them in the menu. Thumbnails need **Screen Recording** permission (System Settings → Privacy & Security → Screen & System Audio Recording), and CmdTab must be relaunched after you grant it. Until then, tiles show the app icon. Minimized windows and windows of hidden apps can't be captured live, so they show their last snapshot, or the app icon if CmdTab hasn't captured them yet.
 

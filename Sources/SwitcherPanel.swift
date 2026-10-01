@@ -1,26 +1,11 @@
 import AppKit
 
-/// The floating Alt+Tab-style grid. Never becomes key, so it never steals focus from the app you're leaving.
+/// A borderless panel that floats above everything on every Space and never becomes key, so it never steals focus
+/// from the app you're leaving.
 @MainActor
-final class SwitcherPanel: NSPanel {
-    var onHover: ((Int) -> Void)?
-    var onClick: ((Int) -> Void)?
-    private(set) var columns = 1
-
-    private let background = NSVisualEffectView()
-    private let tint = NSView()
-    private let titleLabel = NSTextField(labelWithString: "")
-    private var items: [SwitcherItemView] = []
-    private var windowsShown: [SwitcherWindow] = []
-    private var mouseAtShow = NSPoint.zero
-
-    private let padding: CGFloat = 18
-    private let titleHeight: CGFloat = 30
-    private let cornerRadius: CGFloat = 18
-
+class OverlayPanel: NSPanel {
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        isFloatingPanel = true
         level = .popUpMenu
         backgroundColor = .clear
         isOpaque = false
@@ -28,93 +13,150 @@ final class SwitcherPanel: NSPanel {
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
-
-        background.material = .popover
-        background.blendingMode = .behindWindow
-        background.state = .active
-        // A layer corner radius doesn't clip behind-window blur (square corners leak out); a mask image does,
-        // and the window shadow follows it.
-        background.maskImage = Self.roundedMask(radius: cornerRadius)
-        contentView = background
-
-        // Tones down the material's see-through look. Its color is resolved per appearance in show().
-        tint.wantsLayer = true
-        tint.layer?.cornerRadius = cornerRadius
-        tint.autoresizingMask = [.width, .height]
-        background.addSubview(tint)
-
-        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
-        titleLabel.textColor = .labelColor
-        titleLabel.alignment = .center
-        titleLabel.lineBreakMode = .byTruncatingMiddle
-        background.addSubview(titleLabel)
     }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+}
+
+extension NSScreen {
+    /// The screen containing `point` (screen coordinates), falling back to the main screen.
+    static func containing(_ point: NSPoint) -> NSScreen {
+        screens.first { NSMouseInRect(point, $0.frame, false) } ?? main ?? screens[0]
+    }
+}
+
+/// The floating Alt+Tab-style grid.
+@MainActor
+final class SwitcherPanel: OverlayPanel {
+    var onHover: ((Int) -> Void)?
+    var onClick: ((Int) -> Void)?
+    private(set) var columns = 1
+
+    /// Holds the tiles and the title label; sits inside the glass (or the fallback blur).
+    private let content = NSView()
+    /// Only in the pre-Liquid Glass fallback: tones down the blur's see-through look.
+    private var tint: NSView?
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let tooltip = TooltipWindow()
+    private var pendingTooltip: DispatchWorkItem?
+    private var tooltipIndex: Int?
+    private var items: [SwitcherItemView] = []
+    private var windowsShown: [SwitcherWindow] = []
+    private var mouseAtShow = NSPoint.zero
+    private var showsThumbnails = false
+
+    private let padding: CGFloat = 20
+    private let cornerRadius: CGFloat = 26
+    /// Room under each row of icons for the selected window's title, like the native switcher.
+    private let labelHeight: CGFloat = 22
+
+    override init() {
+        super.init()
+        isFloatingPanel = true
+
+        if #available(macOS 26.0, *) {
+            // Liquid Glass, as used by the system Cmd+Tab switcher.
+            let glass = NSGlassEffectView()
+            glass.cornerRadius = cornerRadius
+            glass.contentView = content
+            contentView = glass
+        } else {
+            let background = NSVisualEffectView()
+            background.material = .popover
+            background.blendingMode = .behindWindow
+            background.state = .active
+            // A layer corner radius doesn't clip behind-window blur (square corners leak out); a mask image does,
+            // and the window shadow follows it.
+            background.maskImage = roundedMaskImage(radius: cornerRadius)
+            contentView = background
+
+            // Its color is resolved per appearance in show().
+            let tint = NSView()
+            tint.wantsLayer = true
+            tint.layer?.cornerRadius = cornerRadius
+            tint.autoresizingMask = [.width, .height]
+            background.addSubview(tint)
+            self.tint = tint
+            content.autoresizingMask = [.width, .height]
+            background.addSubview(content)
+        }
+
+        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        titleLabel.alignment = .center
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+        content.addSubview(titleLabel)
+    }
 
     func show(windows: [SwitcherWindow], selected: Int) {
+        hideTooltip()
         windowsShown = windows
         items.forEach { $0.removeFromSuperview() }
         items = []
 
         let mouse = NSEvent.mouseLocation
         mouseAtShow = mouse
-        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens[0]
-        let area = screen.visibleFrame
+        let area = NSScreen.containing(mouse).visibleFrame
 
         switch Settings.appearance {
         case "light": appearance = NSAppearance(named: .aqua)
         case "dark": appearance = NSAppearance(named: .darkAqua)
         default: appearance = nil // follow the system
         }
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            tint.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.55).cgColor
+        if let tint {
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                tint.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.55).cgColor
+            }
         }
 
-        // Thumbnail tiles carry their own title; icon tiles share one header above the grid.
+        // Thumbnail tiles carry their own title; icon tiles show the selected window's title underneath.
         let thumbnails = Settings.showThumbnails
-        let spacing: CGFloat = thumbnails ? 12 : 6
-        let header = thumbnails ? 0 : titleHeight
+        showsThumbnails = thumbnails
+        let spacing: CGFloat = 12
+        let label = thumbnails ? 0 : labelHeight
         let sizes: [CGSize] = thumbnails
             ? ([320, 280, 240, 200, 170, 140] as [CGFloat]).map { CGSize(width: $0, height: ($0 * 0.62 + SwitcherItemView.headerHeight).rounded()) }
-            : ([112, 96, 84, 72, 60] as [CGFloat]).map { CGSize(width: $0, height: $0) }
+            : ([120, 104, 88, 76, 64] as [CGFloat]).map { CGSize(width: $0, height: $0) }
 
         // Pick the largest tile size that fits everything on screen.
         var tile = sizes[0]
-        var rows = 1
+        var height: CGFloat = 0
         for size in sizes {
             tile = size
             let maxCols = max(1, Int((area.width * 0.92 - padding * 2 + spacing) / (size.width + spacing)))
             columns = min(windows.count, maxCols)
-            rows = Int(ceil(Double(windows.count) / Double(columns)))
-            let h = CGFloat(rows) * (size.height + spacing) - spacing + padding * 2 + header
-            if h <= area.height * 0.9 { break }
+            let rows = Int(ceil(Double(windows.count) / Double(columns)))
+            height = CGFloat(rows) * (size.height + label + spacing) - spacing + padding * 2
+            if height <= area.height * 0.9 { break }
         }
 
         let width = CGFloat(columns) * (tile.width + spacing) - spacing + padding * 2
-        let height = CGFloat(rows) * (tile.height + spacing) - spacing + padding * 2 + header
         let frame = NSRect(x: area.midX - width / 2, y: area.midY - height / 2, width: width, height: height)
         setFrame(frame, display: false)
-        tint.frame = background.bounds
+        content.frame = NSRect(x: 0, y: 0, width: width, height: height)
         invalidateShadow()
 
         titleLabel.isHidden = thumbnails
-        titleLabel.frame = NSRect(x: padding, y: height - padding - titleHeight + 6, width: width - padding * 2, height: 22)
 
         for (i, w) in windows.enumerated() {
             let col = i % columns
             let row = i / columns
             let x = padding + CGFloat(col) * (tile.width + spacing)
-            let y = height - padding - header - CGFloat(row + 1) * tile.height - CGFloat(row) * spacing
+            let y = height - padding - tile.height - CGFloat(row) * (tile.height + label + spacing)
             let item = SwitcherItemView(frame: NSRect(x: x, y: y, width: tile.width, height: tile.height),
                                         window: w, index: i, thumbnail: thumbnails)
+            // Hover drives two independent things: selection, and (icon view only) the title tooltip.
             item.onHover = { [weak self] idx in
                 guard let self, NSEvent.mouseLocation != self.mouseAtShow else { return } // ignore until the mouse actually moves
-                self.onHover?(idx)
+                if !self.items[idx].isSelected { self.onHover?(idx) }
+                if !thumbnails { self.scheduleTooltip(for: idx) }
+            }
+            item.onHoverEnd = { [weak self] idx in
+                if self?.tooltipIndex == idx { self?.hideTooltip() }
             }
             item.onClick = { [weak self] idx in self?.onClick?(idx) }
-            background.addSubview(item)
+            content.addSubview(item)
             items.append(item)
         }
 
@@ -125,23 +167,41 @@ final class SwitcherPanel: NSPanel {
 
     func setSelected(_ index: Int) {
         for (i, item) in items.enumerated() { item.isSelected = i == index }
-        if windowsShown.indices.contains(index) {
-            // The app is evident from the selected icon, so the header shows just the window title.
-            let w = windowsShown[index]
-            titleLabel.stringValue = w.title
-        }
+        guard !showsThumbnails, items.indices.contains(index) else { return }
+
+        // Like the native switcher: the app name sits just below the selected icon, and may be wider than the tile.
+        // The window title is in the hover tooltip.
+        let w = windowsShown[index]
+        titleLabel.stringValue = w.app.localizedName ?? w.title
+        let tile = items[index].frame
+        let bounds = content.bounds
+        // Always centered on the icon; near the panel's edges a long name is truncated rather than shifted.
+        let room = 2 * min(tile.midX - 8, bounds.width - 8 - tile.midX)
+        let width = min(titleLabel.intrinsicContentSize.width + 8, room)
+        titleLabel.frame = NSRect(x: tile.midX - width / 2, y: tile.minY - labelHeight + 3, width: width, height: 17)
     }
 
-    private static func roundedMask(radius: CGFloat) -> NSImage {
-        let side = radius * 2 + 1
-        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
+    /// Shows the hovered window's title after a short pause, like a tooltip.
+    private func scheduleTooltip(for index: Int) {
+        guard tooltipIndex != index, windowsShown.indices.contains(index) else { return }
+        hideTooltip()
+        tooltipIndex = index
+        let title = windowsShown[index].title
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isVisible else { return }
+            self.tooltip.show(title, near: NSEvent.mouseLocation, appearance: self.effectiveAppearance)
+            self.addChildWindow(self.tooltip, ordered: .above)
         }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
+        pendingTooltip = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+    }
+
+    private func hideTooltip() {
+        pendingTooltip?.cancel()
+        pendingTooltip = nil
+        tooltipIndex = nil
+        if tooltip.parent != nil { removeChildWindow(tooltip) }
+        tooltip.orderOut(nil)
     }
 
     func setThumbnail(_ image: CGImage, for id: CGWindowID) {
@@ -149,6 +209,7 @@ final class SwitcherPanel: NSPanel {
     }
 
     func dismiss() {
+        hideTooltip()
         orderOut(nil)
         items.forEach { $0.removeFromSuperview() }
         items = []
@@ -161,6 +222,7 @@ final class SwitcherItemView: NSView {
     static let headerHeight: CGFloat = 28
 
     var onHover: ((Int) -> Void)?
+    var onHoverEnd: ((Int) -> Void)?
     var onClick: ((Int) -> Void)?
     var isSelected = false { didSet { if oldValue != isSelected { needsDisplay = true } } }
     let windowID: CGWindowID
@@ -181,8 +243,8 @@ final class SwitcherItemView: NSView {
 
         let badgeSize: CGFloat = 14
         guard thumbnail else {
-            // Icon only; the selected window's title is shown in the panel header.
-            let inset = (frame.width * 0.12).rounded()
+            // Icon only; the selected window's title is shown below it by the panel.
+            let inset = (frame.width * 0.08).rounded()
             iconView.image = appIcon
             iconView.imageScaling = .scaleProportionallyUpOrDown
             iconView.frame = bounds.insetBy(dx: inset, dy: inset)
@@ -230,18 +292,6 @@ final class SwitcherItemView: NSView {
         NSRect(x: inset, y: inset, width: bounds.width - inset * 2, height: bounds.height - inset - inset / 2 - Self.headerHeight)
     }
 
-    private static func roundedMask(radius: CGFloat) -> NSImage {
-        let side = radius * 2 + 1
-        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
-    }
-
     func setThumbnail(_ image: CGImage) {
         guard showsThumbnail else { return }
         imageView.image = NSImage(cgImage: image, size: .zero)
@@ -258,6 +308,13 @@ final class SwitcherItemView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard isSelected else { return }
+        guard showsThumbnail else {
+            // Native-style highlight: a soft rounded square behind the icon, no border.
+            let radius = bounds.width * 0.2
+            NSColor.labelColor.withAlphaComponent(0.2).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
+            return
+        }
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: 12, yRadius: 12)
         NSColor.controlAccentColor.withAlphaComponent(0.28).setFill()
         path.fill()
@@ -273,7 +330,8 @@ final class SwitcherItemView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) { onHover?(index) }
-    override func mouseMoved(with event: NSEvent) { if !isSelected { onHover?(index) } }
+    override func mouseMoved(with event: NSEvent) { onHover?(index) }
+    override func mouseExited(with event: NSEvent) { onHoverEnd?(index) }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) { onClick?(index) }
 }
@@ -312,5 +370,56 @@ final class StateBadge: NSView {
             dot.lineWidth = 0.75
             dot.stroke()
         }
+    }
+}
+
+/// A rounded-rect mask for visual-effect views; a layer corner radius doesn't clip behind-window blur.
+@MainActor
+func roundedMaskImage(radius: CGFloat) -> NSImage {
+    let side = radius * 2 + 1
+    let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+        NSColor.black.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+        return true
+    }
+    image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+    image.resizingMode = .stretch
+    return image
+}
+
+/// A tooltip look-alike. Real tooltips don't appear in the switcher, because it's a panel that never becomes active.
+@MainActor
+final class TooltipWindow: OverlayPanel {
+    private let label = NSTextField(labelWithString: "")
+
+    override init() {
+        super.init()
+        ignoresMouseEvents = true
+
+        let background = NSVisualEffectView()
+        background.material = .toolTip
+        background.state = .active
+        background.maskImage = roundedMaskImage(radius: 5)
+        contentView = background
+
+        label.font = .toolTipsFont(ofSize: 0)
+        label.textColor = .labelColor
+        label.lineBreakMode = .byTruncatingMiddle
+        background.addSubview(label)
+    }
+
+    /// Shows `text` just below and right of `point` (screen coordinates), kept on screen.
+    func show(_ text: String, near point: NSPoint, appearance: NSAppearance) {
+        self.appearance = appearance
+        label.stringValue = text
+        let textSize = label.intrinsicContentSize
+        let size = NSSize(width: min(textSize.width + 14, 600), height: textSize.height + 6)
+        let screen = NSScreen.containing(point).visibleFrame
+        var origin = NSPoint(x: point.x + 4, y: point.y - 22 - size.height)
+        origin.x = min(max(origin.x, screen.minX + 4), screen.maxX - size.width - 4)
+        origin.y = max(origin.y, screen.minY + 4)
+        setFrame(NSRect(origin: origin, size: size), display: false)
+        label.frame = NSRect(x: 7, y: 3, width: size.width - 14, height: textSize.height)
+        orderFrontRegardless()
     }
 }
