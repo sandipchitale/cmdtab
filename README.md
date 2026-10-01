@@ -78,3 +78,7 @@ For window thumbnails, also grant **Screen Recording** permission and relaunch C
 - While CmdTab is running and enabled, it turns off the system Cmd+Tab app switcher. It turns it back on when you quit CmdTab or uncheck **Enabled**.
 - Permissions are tied to the code signature. When it changes (for example, the first `install.sh` run after an ad-hoc build), the install resets the old Accessibility and Screen Recording entries and you grant them once more. To sign with your own certificate instead, set `CODESIGN_IDENTITY`.
 - Like the Windows default, only windows on the current Space (desktop) are shown.
+
+## License
+
+[MIT](LICENSE) © 2026 Sandip Chitale
