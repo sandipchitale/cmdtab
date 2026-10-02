@@ -4,6 +4,8 @@ A tiny menu bar app that makes **Cmd+Tab switch between windows** the way Alt+Ta
 
 ## Switcher
 
+![CmdTab switcher in icon view, with the selected app highlighted and its name below](screenshots/cmdtab-switcher-icons.png)
+
 ![CmdTab switcher in thumbnail view, with the selected window highlighted and hidden-app badges](screenshots/cmdtab-switcher.png)
 
 ## Options
