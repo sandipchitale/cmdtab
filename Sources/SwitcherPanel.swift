@@ -425,7 +425,9 @@ final class TooltipWindow: OverlayPanel {
     func show(_ text: String, near point: NSPoint, appearance: NSAppearance) {
         contentAppearance = appearance
         label.stringValue = text
-        let textSize = label.intrinsicContentSize
+        // intrinsicContentSize comes out a few points narrower than the text needs, which truncates every title.
+        let cellSize = label.cell?.cellSize ?? label.intrinsicContentSize
+        let textSize = NSSize(width: ceil(cellSize.width), height: ceil(cellSize.height))
         let size = NSSize(width: min(textSize.width + 14, 600), height: textSize.height + 6)
         let screen = NSScreen.containing(point).visibleFrame
         var origin = NSPoint(x: point.x + 4, y: point.y - 22 - size.height)
