@@ -5,7 +5,7 @@ enum Settings {
     private static let d = UserDefaults.standard
 
     static func register() {
-        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "showThumbnails": false, "appearance": "system"])
+        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
     }
 
     static var enabled: Bool {
@@ -29,6 +29,11 @@ enum Settings {
         get { d.string(forKey: "appearance") ?? "system" }
         set { d.set(newValue, forKey: "appearance") }
     }
+    /// Clicking a window's green button toggles it between filling the screen and its previous frame, instead of entering full screen.
+    static var greenButtonZooms: Bool {
+        get { d.bool(forKey: "greenButtonZooms") }
+        set { d.set(newValue, forKey: "greenButtonZooms") }
+    }
 }
 
 @MainActor
@@ -36,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let controller = SwitcherController()
     private lazy var tap = HotkeyTap(controller: controller)
+    private let greenButtonTap = GreenButtonTap()
     private var permissionTimer: Timer?
     private var signalSources: [DispatchSourceSignal] = []
 
@@ -49,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.representedObject = value
         return item
     }
+    private let greenButtonItem = NSMenuItem(title: "Green Button Toggles Maximize Instead of Full Screen", action: #selector(toggleGreenButton), keyEquivalent: "")
     private let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
     private let permissionItem = NSMenuItem(title: "", action: #selector(openAccessibilitySettings), keyEquivalent: "")
 
@@ -85,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             NSLog("CmdTab: failed to create event tap")
         }
+        if !greenButtonTap.start() { NSLog("CmdTab: failed to create green button event tap") }
         updateMenu()
     }
 
@@ -137,6 +145,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         appearanceItem.submenu = appearanceMenu
         menu.addItem(appearanceItem)
         menu.addItem(.separator())
+        menu.addItem(greenButtonItem)
+        menu.addItem(.separator())
         menu.addItem(loginItem)
         menu.addItem(permissionItem)
         menu.addItem(.separator())
@@ -157,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for item in appearanceItems {
             item.state = item.representedObject as? String == Settings.appearance ? .on : .off
         }
+        greenButtonItem.state = Settings.greenButtonZooms ? .on : .off
         thumbnailsItem.title = Settings.showThumbnails && !Thumbnails.shared.hasPermission
             ? "Show Window Thumbnails (needs Screen Recording permission)"
             : "Show Window Thumbnails"
@@ -209,6 +220,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func setAppearance(_ sender: NSMenuItem) {
         guard let value = sender.representedObject as? String else { return }
         Settings.appearance = value
+        updateMenu()
+    }
+
+    @objc private func toggleGreenButton() {
+        Settings.greenButtonZooms.toggle()
         updateMenu()
     }
 

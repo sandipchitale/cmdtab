@@ -48,6 +48,27 @@ enum AX {
         return AXValueGetValue(v as! AXValue, .cgSize, &s) ? s : nil
     }
 
+    static func position(_ el: AXUIElement) -> CGPoint? {
+        guard let v = value(el, kAXPositionAttribute), CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
+        var p = CGPoint.zero
+        return AXValueGetValue(v as! AXValue, .cgPoint, &p) ? p : nil
+    }
+
+    /// The element's frame in AX coordinates (top-left origin on the primary screen).
+    static func frame(_ el: AXUIElement) -> CGRect? {
+        guard let p = position(el), let s = size(el) else { return nil }
+        return CGRect(origin: p, size: s)
+    }
+
+    static func setFrame(_ el: AXUIElement, _ frame: CGRect) {
+        var origin = frame.origin, size = frame.size
+        let pos = AXValueCreate(.cgPoint, &origin)!, sz = AXValueCreate(.cgSize, &size)!
+        // Size, move, size again: a window may not grow past the screen edge until it has moved.
+        AXUIElementSetAttributeValue(el, kAXSizeAttribute as CFString, sz)
+        AXUIElementSetAttributeValue(el, kAXPositionAttribute as CFString, pos)
+        AXUIElementSetAttributeValue(el, kAXSizeAttribute as CFString, sz)
+    }
+
     static func windowID(_ el: AXUIElement) -> CGWindowID? {
         var wid: CGWindowID = 0
         return _AXUIElementGetWindow(el, &wid) == .success && wid != 0 ? wid : nil

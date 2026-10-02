@@ -51,6 +51,12 @@ A small yellow badge marks windows you can't currently see:
 
 Normal windows have no badge. In icon view the badge sits on the icon's bottom-right corner; in thumbnail view it's at the right end of the title row.
 
+## Green button
+
+A plain click on a window's green button maximizes the window to fill the screen (minus the menu bar and Dock) instead of taking it full screen. Click it again to put the window back where it was. If you move or resize a maximized window, the next click maximizes it again rather than restoring.
+
+Only clicks that land on the green button are affected. Hovering still shows the button's tiling menu, and Option-click keeps the system's own zoom. Turn this off in the menu to get the standard full-screen behavior back.
+
 ## Menu
 
 The menu bar icon has these options:
@@ -59,6 +65,7 @@ The menu bar icon has these options:
 - **Include Minimized Windows** / **Include Windows of Hidden Apps**: show or skip those windows.
 - **Show App Icons** / **Show Window Thumbnails**: choose the view.
 - **Appearance**: System, Light or Dark, for the switcher panel only.
+- **Green Button Toggles Maximize Instead of Full Screen**: see [Green button](#green-button). On by default.
 - **Launch at Login**
 - **Accessibility Permission**: shows whether it's granted, and opens System Settings if it isn't.
 - **Quit CmdTab**
