@@ -2,14 +2,15 @@ import AppKit
 import ApplicationServices
 
 /// Makes a plain click on a window's green button toggle the window between filling its screen and its previous
-/// frame, instead of entering full screen. Option-click is left to the system.
+/// frame, instead of entering full screen. Option-click enters full screen (the system's plain-click behavior).
 @MainActor
 final class GreenButtonTap {
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private let systemWide = AXUIElementCreateSystemWide()
-    /// The mouse-down hit the green button and was swallowed, so its mouse-up is swallowed too.
-    private var clickOnButton = false
+    /// What happened to the last mouse-down on a green button, so its mouse-up gets the same treatment.
+    private enum Click { case none, swallowed, optionRemoved }
+    private var click = Click.none
     /// Windows this tap filled the screen with: the frame to restore, and the frame they got when filled.
     private var zoomed: [CGWindowID: (restore: CGRect, filled: CGRect)] = [:]
 
@@ -44,16 +45,24 @@ final class GreenButtonTap {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
         case .leftMouseDown:
-            guard Settings.greenButtonZooms, !event.flags.contains(.maskAlternate),
-                  let window = greenButtonWindow(at: event.location) else { return pass }
-            clickOnButton = true
+            click = .none
+            guard Settings.greenButtonZooms, let window = greenButtonWindow(at: event.location) else { return pass }
+            if event.flags.contains(.maskAlternate) {
+                // Without Option, the click is the system's own: full screen.
+                click = .optionRemoved
+                event.flags.remove(.maskAlternate)
+                return pass
+            }
+            click = .swallowed
             // Resize outside the tap callback so the click itself isn't held up.
             DispatchQueue.main.async { self.toggle(window) }
             return nil
         case .leftMouseUp:
-            if clickOnButton {
-                clickOnButton = false
-                return nil
+            defer { click = .none }
+            switch click {
+            case .swallowed: return nil
+            case .optionRemoved: event.flags.remove(.maskAlternate)
+            case .none: break
             }
         default:
             break

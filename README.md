@@ -55,7 +55,7 @@ Normal windows have no badge. In icon view the badge sits on the icon's bottom-r
 
 A plain click on a window's green button maximizes the window to fill the screen (minus the menu bar and Dock) instead of taking it full screen. Click it again to put the window back where it was. If you move or resize a maximized window, the next click maximizes it again rather than restoring.
 
-Only clicks that land on the green button are affected. Hovering still shows the button's tiling menu, and Option-click keeps the system's own zoom. Turn this off in the menu to get the standard full-screen behavior back.
+Option-click the green button to go full screen, which is what a plain click does in standard macOS. Only clicks that land on the green button are affected, and hovering still shows the button's tiling menu. Turn this off in the menu to get the standard behavior back.
 
 ## Menu
 
