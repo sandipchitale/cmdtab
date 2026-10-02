@@ -30,8 +30,8 @@ W, Q, M and H act on the selected tile and keep the switcher open, so you can ti
 
 ## Views
 
-- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a soft rounded highlight with its app name centered below it. Rest the pointer on an icon to see that window's title in a tooltip.
-- **Window thumbnails**: a live snapshot of each window, with the app icon and window title above it. The selected tile gets an accent-colored border.
+- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, with its app name centered below it. Rest the pointer on an icon to see that window's title in a tooltip.
+- **Window thumbnails**: a live snapshot of each window, with the app icon and window title above it. The selected tile gets the same darker rounded background as in icon view.
 
 On macOS 26 and later, the switcher panel uses the same Liquid Glass material as the native switcher. Earlier versions get a blurred, tinted panel instead. Either way it follows the **Appearance** setting.
 

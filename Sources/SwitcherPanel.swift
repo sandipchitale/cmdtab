@@ -319,19 +319,21 @@ final class SwitcherItemView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard isSelected else { return }
-        guard showsThumbnail else {
-            // Native-style highlight: a soft rounded square behind the icon, no border.
-            let radius = bounds.width * 0.2
-            NSColor.labelColor.withAlphaComponent(0.2).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
-            return
+        // Native-style highlight: a darker rounded square behind the selection, no border.
+        let rect: NSRect
+        let radius: CGFloat
+        if showsThumbnail {
+            rect = bounds
+            radius = 12
+        } else {
+            // Hug the icon's visible squircle, which is about 80% of the icon image (the rest is transparent padding).
+            let side = iconView.frame.width
+            rect = iconView.frame.insetBy(dx: side * 0.02, dy: side * 0.02)
+            radius = rect.width * 0.27
         }
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: 12, yRadius: 12)
-        NSColor.controlAccentColor.withAlphaComponent(0.28).setFill()
-        path.fill()
-        NSColor.controlAccentColor.setStroke()
-        path.lineWidth = 2.5
-        path.stroke()
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        (dark ? NSColor.white.withAlphaComponent(0.25) : NSColor.black.withAlphaComponent(0.35)).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
     }
 
     override func updateTrackingAreas() {
