@@ -5,7 +5,7 @@ enum Settings {
     private static let d = UserDefaults.standard
 
     static func register() {
-        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
+        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
     }
 
     static var enabled: Bool {
@@ -19,6 +19,11 @@ enum Settings {
     static var includeHiddenApps: Bool {
         get { d.bool(forKey: "includeHiddenApps") }
         set { d.set(newValue, forKey: "includeHiddenApps") }
+    }
+    /// Also list windows on other Spaces (desktops), not just the current one.
+    static var includeAllSpaces: Bool {
+        get { d.bool(forKey: "includeAllSpaces") }
+        set { d.set(newValue, forKey: "includeAllSpaces") }
     }
     static var showThumbnails: Bool {
         get { d.bool(forKey: "showThumbnails") }
@@ -48,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled), keyEquivalent: "")
     private let minimizedItem = NSMenuItem(title: "Include Minimized Windows", action: #selector(toggleMinimized), keyEquivalent: "")
     private let hiddenItem = NSMenuItem(title: "Include Windows of Hidden Apps", action: #selector(toggleHidden), keyEquivalent: "")
+    private let allSpacesItem = NSMenuItem(title: "Include Windows from All Desktops", action: #selector(toggleAllSpaces), keyEquivalent: "")
     private let iconsItem = NSMenuItem(title: "Show App Icons", action: #selector(showIcons), keyEquivalent: "")
     private let thumbnailsItem = NSMenuItem(title: "Show Window Thumbnails", action: #selector(showThumbnails), keyEquivalent: "")
     private let appearanceItems = [("System", "system"), ("Light", "light"), ("Dark", "dark")].map { title, value in
@@ -133,6 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(enabledItem)
         menu.addItem(minimizedItem)
         menu.addItem(hiddenItem)
+        menu.addItem(allSpacesItem)
         menu.addItem(.separator())
         menu.addItem(iconsItem)
         menu.addItem(thumbnailsItem)
@@ -162,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         enabledItem.state = Settings.enabled ? .on : .off
         minimizedItem.state = Settings.includeMinimized ? .on : .off
         hiddenItem.state = Settings.includeHiddenApps ? .on : .off
+        allSpacesItem.state = Settings.includeAllSpaces ? .on : .off
         iconsItem.state = Settings.showThumbnails ? .off : .on
         thumbnailsItem.state = Settings.showThumbnails ? .on : .off
         for item in appearanceItems {
@@ -202,6 +210,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleHidden() {
         Settings.includeHiddenApps.toggle()
+        updateMenu()
+    }
+
+    @objc private func toggleAllSpaces() {
+        Settings.includeAllSpaces.toggle()
         updateMenu()
     }
 

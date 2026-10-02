@@ -63,6 +63,7 @@ The menu bar icon has these options:
 
 - **Enabled**: turn CmdTab on or off. While it's off, the system Cmd+Tab works as usual.
 - **Include Minimized Windows** / **Include Windows of Hidden Apps**: show or skip those windows.
+- **Include Windows from All Desktops**: also list windows on other Spaces (desktops), including full-screen ones. Picking one switches to its desktop. Off by default.
 - **Show App Icons** / **Show Window Thumbnails**: choose the view.
 - **Appearance**: System, Light or Dark, for the switcher panel only.
 - **Green Button Toggles Maximize Instead of Full Screen**: see [Green button](#green-button). On by default.
@@ -88,7 +89,7 @@ For window thumbnails, also grant **Screen Recording** permission and relaunch C
 
 - While CmdTab is running and enabled, it turns off the system Cmd+Tab app switcher. It turns it back on when you quit CmdTab or uncheck **Enabled**.
 - Permissions are tied to the code signature. When it changes (for example, the first `install.sh` run after an ad-hoc build), the install resets the old Accessibility and Screen Recording entries and you grant them once more. To sign with your own certificate instead, set `CODESIGN_IDENTITY`.
-- Like the Windows default, only windows on the current Space (desktop) are shown.
+- Like the Windows default, only windows on the current Space (desktop) are shown, unless **Include Windows from All Desktops** is on. macOS's Accessibility API doesn't list windows on other desktops, so CmdTab finds them through windows it has already seen. A window that was opened directly on another desktop, and that you haven't visited since CmdTab started, may be missing until you visit that desktop once. Windows on other desktops can't be captured live, so in thumbnail view they show their last snapshot or the app icon.
 
 ## License
 

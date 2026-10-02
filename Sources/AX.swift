@@ -5,6 +5,20 @@ import ApplicationServices
 @_silgen_name("_AXUIElementGetWindow")
 func _AXUIElementGetWindow(_ element: AXUIElement, _ wid: UnsafeMutablePointer<CGWindowID>) -> AXError
 
+// Private but long-stable API used by window switchers to reach windows on other Spaces, which kAXWindowsAttribute omits:
+// builds an element from a remote token (pid, 0, "coco", element id).
+@_silgen_name("_AXUIElementCreateWithRemoteToken")
+func _AXUIElementCreateWithRemoteToken(_ token: CFData) -> Unmanaged<AXUIElement>?
+
+// Private SkyLight APIs to list the windows on every Space.
+@_silgen_name("CGSMainConnectionID")
+func CGSMainConnectionID() -> UInt32
+@_silgen_name("CGSCopyManagedDisplaySpaces")
+func CGSCopyManagedDisplaySpaces(_ cid: UInt32) -> CFArray?
+@_silgen_name("CGSCopyWindowsWithOptionsAndTags")
+func CGSCopyWindowsWithOptionsAndTags(_ cid: UInt32, _ owner: UInt32, _ spaces: CFArray, _ options: UInt32,
+                                      _ setTags: UnsafeMutablePointer<UInt64>, _ clearTags: UnsafeMutablePointer<UInt64>) -> CFArray?
+
 // Private SkyLight API to turn the system's own Cmd+Tab / Cmd+Shift+Tab switcher on and off.
 @_silgen_name("CGSSetSymbolicHotKeyEnabled")
 func CGSSetSymbolicHotKeyEnabled(_ hotKey: Int32, _ isEnabled: Bool) -> Int32

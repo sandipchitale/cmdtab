@@ -18,6 +18,11 @@ final class WindowManager {
 
     private var mru: [CGWindowID] = []
     private var observers: [pid_t: AXObserver] = [:]
+    /// Window elements seen so far. Accessibility won't list a window once it's on another Space, but an element we
+    /// already hold keeps working, so this is how windows on other Spaces are usually found.
+    private var known: [CGWindowID: (pid: pid_t, element: AXUIElement)] = [:]
+    /// Off-Space windows already searched for by brute force (and not found), so each is searched for only once.
+    private var searched: [pid_t: Set<CGWindowID>] = [:]
     private var started = false
 
     func start() {
@@ -45,11 +50,27 @@ final class WindowManager {
         }
         nc.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { n in
             guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-            MainActor.assumeIsolated { self.unobserve(app.processIdentifier) }
+            MainActor.assumeIsolated {
+                let pid = app.processIdentifier
+                self.unobserve(pid)
+                self.known = self.known.filter { $0.value.pid != pid }
+                self.searched[pid] = nil
+            }
         }
         nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { n in
             let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             MainActor.assumeIsolated { self.bumpFocusedWindow(of: app) }
+        }
+        // Remember the windows of each Space you visit, so they can be listed from other Spaces later.
+        nc.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                guard Settings.includeAllSpaces else { return }
+                for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular && app.processIdentifier != getpid() {
+                    for win in AX.elements(AXUIElementCreateApplication(app.processIdentifier), kAXWindowsAttribute) {
+                        self.remember(win, pid: app.processIdentifier)
+                    }
+                }
+            }
         }
     }
 
@@ -70,11 +91,15 @@ final class WindowManager {
     }
 
     fileprivate func handle(element: AXUIElement, notification: String) {
-        if AX.string(element, kAXRoleAttribute) == kAXApplicationRole {
-            if let win = AX.element(element, kAXFocusedWindowAttribute), let wid = AX.windowID(win) { bump(wid) }
-        } else if let wid = AX.windowID(element) {
-            bump(wid)
-        }
+        let win = AX.string(element, kAXRoleAttribute) == kAXApplicationRole ? AX.element(element, kAXFocusedWindowAttribute) : element
+        guard let win, let wid = AX.windowID(win) else { return }
+        bump(wid)
+        var pid: pid_t = 0
+        if Settings.includeAllSpaces, AXUIElementGetPid(win, &pid) == .success { remember(win, pid: pid) }
+    }
+
+    private func remember(_ win: AXUIElement, pid: pid_t) {
+        if let wid = AX.windowID(win) { known[wid] = (pid, win) }
     }
 
     private func observe(_ app: NSRunningApplication) {
@@ -117,9 +142,62 @@ final class WindowManager {
         }
     }
 
+    /// Normal windows on any Space (including full-screen ones) that aren't on screen now, by owning process.
+    private func offSpaceWindows(onScreen: Set<CGWindowID>) -> [pid_t: Set<CGWindowID>] {
+        let cid = CGSMainConnectionID()
+        guard let displays = CGSCopyManagedDisplaySpaces(cid) as? [[String: Any]] else { return [:] }
+        let spaces = displays.flatMap { ($0["Spaces"] as? [[String: Any]]) ?? [] }.compactMap { $0["ManagedSpaceID"] as? Int }
+        var setTags: UInt64 = 0, clearTags: UInt64 = 0
+        guard !spaces.isEmpty,
+              let ids = CGSCopyWindowsWithOptionsAndTags(cid, 0, spaces as CFArray, 2, &setTags, &clearTags) as? [CGWindowID],
+              let info = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return [:]
+        }
+        let onSomeSpace = Set(ids).subtracting(onScreen)
+        var result: [pid_t: Set<CGWindowID>] = [:]
+        for d in info where (d[kCGWindowLayer as String] as? NSNumber)?.intValue == 0 {
+            guard let wid = (d[kCGWindowNumber as String] as? NSNumber)?.uint32Value, onSomeSpace.contains(wid),
+                  let pid = (d[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value else { continue }
+            result[pid, default: []].insert(wid)
+        }
+        return result
+    }
+
+    /// Elements for windows on other Spaces: from `known`, or else by trying the app's element ids one by one.
+    private func offSpaceElements(pid: pid_t, wids: Set<CGWindowID>) -> [AXUIElement] {
+        var found: [AXUIElement] = []
+        var missing = Set<CGWindowID>()
+        for wid in wids {
+            if let k = known[wid], k.pid == pid, AX.windowID(k.element) == wid { found.append(k.element) } else { missing.insert(wid) }
+        }
+        missing.subtract(searched[pid] ?? [])
+        guard !missing.isEmpty else { return found }
+        defer { searched[pid, default: []].formUnion(missing) }
+
+        // Element ids are small sequential numbers (a few hundred in practice). Stop early once everything is found,
+        // and give up on an app that doesn't answer, so a hung app costs one timeout, not thousands.
+        var token = Data(count: 20)
+        token.withUnsafeMutableBytes { b in
+            b.storeBytes(of: pid, toByteOffset: 0, as: pid_t.self)
+            b.storeBytes(of: Int32(0x636f636f), toByteOffset: 8, as: Int32.self) // "coco"
+        }
+        for id: UInt64 in 0..<2000 where !missing.isEmpty {
+            token.withUnsafeMutableBytes { $0.storeBytes(of: id, toByteOffset: 12, as: UInt64.self) }
+            guard let el = _AXUIElementCreateWithRemoteToken(token as CFData)?.takeRetainedValue() else { continue }
+            var role: CFTypeRef?
+            let err = AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &role)
+            if err == .cannotComplete { break }
+            guard (role as? String) == kAXWindowRole, let wid = AX.windowID(el), missing.remove(wid) != nil else { continue }
+            remember(el, pid: pid)
+            found.append(el)
+        }
+        return found
+    }
+
     func currentWindows() -> [SwitcherWindow] {
         let includeMinimized = Settings.includeMinimized
         let includeHidden = Settings.includeHiddenApps
+        let includeAllSpaces = Settings.includeAllSpaces
         let z = zOrder()
         let zIndex = Dictionary(z.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
 
@@ -127,14 +205,29 @@ final class WindowManager {
         bumpFocusedWindow(of: NSWorkspace.shared.frontmostApplication)
         let mruIndex = Dictionary(mru.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
 
+        let offSpace = includeAllSpaces ? offSpaceWindows(onScreen: Set(z)) : [:]
+        let awayIDs = Set(offSpace.values.joined())
+        if includeAllSpaces {
+            let live = Set(z).union(awayIDs)
+            known = known.filter { live.contains($0.key) }
+        }
+
         var result: [SwitcherWindow] = []
         var seen = Set<CGWindowID>()
         for app in NSWorkspace.shared.runningApplications {
             guard app.activationPolicy == .regular, app.processIdentifier != getpid(), !app.isTerminated else { continue }
             if app.isHidden && !includeHidden { continue }
 
-            let appEl = AXUIElementCreateApplication(app.processIdentifier)
-            for win in AX.elements(appEl, kAXWindowsAttribute) {
+            let pid = app.processIdentifier
+            var windows = AX.elements(AXUIElementCreateApplication(pid), kAXWindowsAttribute)
+            if includeAllSpaces {
+                windows.forEach { remember($0, pid: pid) }
+                let listed = Set(windows.compactMap(AX.windowID))
+                if let away = offSpace[pid]?.subtracting(listed), !away.isEmpty {
+                    windows += offSpaceElements(pid: pid, wids: away)
+                }
+            }
+            for win in windows {
                 guard AX.string(win, kAXRoleAttribute) == kAXWindowRole else { continue }
                 let title = AX.string(win, kAXTitleAttribute) ?? ""
                 let subrole = AX.string(win, kAXSubroleAttribute)
@@ -145,8 +238,8 @@ final class WindowManager {
                 let minimized = AX.bool(win, kAXMinimizedAttribute) ?? false
                 if minimized && !includeMinimized { continue }
 
-                // Not minimized, not hidden, yet not on screen => it lives on another Space.
-                if !minimized && !app.isHidden && zIndex[wid] == nil { continue }
+                // Not minimized, not hidden, yet not on screen => it lives on another Space (or is a background tab).
+                if !minimized && !app.isHidden && zIndex[wid] == nil && !awayIDs.contains(wid) { continue }
 
                 seen.insert(wid)
                 result.append(SwitcherWindow(id: wid, element: win, app: app,
