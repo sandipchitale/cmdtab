@@ -1,12 +1,12 @@
 # CmdTab
 
-A tiny menu bar app that makes **Cmd+Tab switch between windows** the way Alt+Tab works on Windows. Nothing else changes, and Cmd+` keeps working as before.
+A tiny menu bar app that makes **Cmd+Tab switch between windows** the way Alt+Tab works on Windows. Cmd+` keeps working as before. It also adds an on-demand [Dock on Option+Tab](#dock-optiontab), and makes a window's [green button](#green-button) maximize instead of going full screen. Each of these can be turned off in the menu.
 
 ## Switcher
 
-![CmdTab switcher in icon view, with the selected app highlighted and its name above](screenshots/cmdtab-switcher-icons.png)
+![CmdTab switcher in icon view: the selected window's name in a bubble above it, and the optional window preview below](screenshots/cmdtab-switcher-icons.png)
 
-![CmdTab switcher in thumbnail view, with the selected window highlighted and hidden-app badges](screenshots/cmdtab-switcher.png)
+![CmdTab switcher in thumbnail view, with the selected window highlighted](screenshots/cmdtab-switcher.png)
 
 ## Options
 
@@ -24,7 +24,7 @@ A tiny menu bar app that makes **Cmd+Tab switch between windows** the way Alt+Ta
 | M | Minimize / restore the selected window |
 | H | Hide / show the selected window's app |
 | Esc | Cancel |
-| Mouse hover / click | Select / switch (in icon view, hovering also shows the window title) |
+| Mouse hover / click | Select / switch (in icon view, hovering also shows the window title if the bubble doesn't already) |
 
 A quick Cmd+Tab tap jumps straight to the previous window without showing the switcher. Windows are listed in most-recently-used order, with minimized windows last.
 
@@ -32,12 +32,12 @@ W, Q, M and H act on the selected tile and keep the switcher open, so you can ti
 
 ## Views
 
-- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, and its app name floats in a bubble above it, like the Dock's. When an app has more than one window listed, the bubble shows the window's title instead, so you can tell them apart. Rest the pointer on an icon to see that window's title in a tooltip. With **Show Window Preview** on, a snapshot of the selected window also hangs below its icon.
+- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, and its app name floats in a bubble above it, like the Dock's. When an app has more than one window listed, the bubble shows the window's title instead, so you can tell them apart. Otherwise, rest the pointer on an icon to see that window's title in a tooltip. With **Show Window Preview** on, a snapshot of the selected window also hangs below its icon; click it to switch to that window.
 - **Window thumbnails**: a live snapshot of each window, with the app icon and window title above it. The selected tile gets the same darker rounded background as in icon view.
 
-On macOS 26 and later, the switcher panel uses the same Liquid Glass material as the native switcher. Earlier versions get a blurred, tinted panel instead. Either way it follows the **Appearance** setting.
+Choose between them in the menu. Thumbnails and window previews need **Screen Recording** permission (System Settings → Privacy & Security → Screen & System Audio Recording), and CmdTab must be relaunched after you grant it. Until then, they show the app icon. Minimized windows, windows of hidden apps and windows on other desktops can't be captured live, so they show their last snapshot, or the app icon if CmdTab hasn't captured them yet.
 
-Choose between them in the menu. Thumbnails need **Screen Recording** permission (System Settings → Privacy & Security → Screen & System Audio Recording), and CmdTab must be relaunched after you grant it. Until then, tiles show the app icon. Minimized windows and windows of hidden apps can't be captured live, so they show their last snapshot, or the app icon if CmdTab hasn't captured them yet.
+On macOS 26 and later, CmdTab's panels use the same Liquid Glass material as the native switcher, with a thin border in the opposite tone so they stand out against a background of the same tone. Earlier versions get a blurred, tinted panel instead. Either way they follow the **Appearance** setting.
 
 ## Window state badges
 
@@ -59,9 +59,9 @@ Option-click the green button to go full screen, which is what a plain click doe
 
 ## Dock (Option+Tab)
 
-![CmdTab Dock switcher: a Dock-like row of apps, folders and the Trash, with the selected app's name above it](screenshots/alttab-switcher.png)
+![CmdTab Dock switcher: a Dock-like row of apps, folders and the Trash, with the selected app's name above it and a preview of its window below](screenshots/alttab-switcher.png)
 
-Press **Option+Tab** to bring up a Dock on the current display, laid out like the real one: Finder, your pinned apps (without any spacer gaps you added), the recent apps section (if it's on in Dock settings), running apps that aren't pinned, then a divider, your Dock folders (such as Downloads), and the Trash. Running apps have a dot under the icon, hidden apps get the ◯ badge, and the selected item's name floats above it. It's handy with several displays, or with the real Dock hidden.
+Press **Option+Tab** to bring up a Dock where you're working (per the **Show On** setting), laid out like the real one: Finder, your pinned apps (without any spacer gaps you added), the recent apps section (if it's on in Dock settings), running apps that aren't pinned, then a divider, your Dock folders (such as Downloads), and the Trash. Running apps have a dot under the icon, hidden apps get the ◯ badge, and the selected item's name floats above it. It's handy with several displays, or with the real Dock hidden.
 
 Unlike Cmd+Tab, it stays up after you let go of Option, until you pick something, press Esc or Option+Tab again, or click outside it.
 
@@ -71,7 +71,7 @@ With **Show Window Previews** on (it's off by default), previews of the selected
 | --- | --- |
 | Tab / Shift+Tab | Next / previous item |
 | ← → | Next / previous item, or window preview while in the previews |
-| ↓ / ↑ | Into the selected app's window previews / back to the icons (with previews on) |
+| ↓ / ↑ | Into the selected app's window previews / back to the icons (with previews on); between rows if the Dock wraps into a grid |
 | Return, or click | Open the item, like clicking it in the Dock, or bring the highlighted preview's window forward |
 | W | Close the highlighted preview's window |
 | Q | Quit the selected app |
@@ -101,7 +101,7 @@ The menu bar icon has these options:
 - **Option+Tab Shows Dock**: turn the [Dock](#dock-optiontab) on or off. It works independently of **Cmd+Tab Shows Windows**.
   - **Show Window Previews**: preview the selected app's windows under its icon in the Dock. Off by default.
 - **Show On**: where the switcher and the Dock appear. **All Displays** (the default) shows them on every display; arrow keys follow the grid on the pointer's display. **Display with Pointer** or **Display with Active Window** (the display showing most of the frontmost window) shows them on just one.
-- **Appearance**: System, Light or Dark, for the switcher panel only.
+- **Appearance**: System, Light or Dark, for CmdTab's panels (the switcher, the Dock, previews and name bubbles) only.
 - **Green Button Toggles Maximize Instead of Full Screen**: see [Green button](#green-button). On by default.
 - **Launch at Login**
 - **Accessibility Permission**: shows whether it's granted, and opens System Settings if it isn't.
@@ -117,7 +117,7 @@ On first launch, grant **Accessibility** permission in System Settings → Priva
 
 The first time you run it, `install.sh` creates a self-signed code-signing certificate called "CmdTab Local Signing" in your login keychain. macOS asks for your password to trust it, and may ask once whether `codesign` can use the key (choose **Always Allow**). Every build is then signed with that certificate, so the Accessibility and Screen Recording grants survive rebuilds.
 
-For window thumbnails, also grant **Screen Recording** permission and relaunch CmdTab (see [Views](#views)).
+For window thumbnails and previews, also grant **Screen Recording** permission and relaunch CmdTab (see [Views](#views)).
 
 `./build.sh` alone builds `build/CmdTab.app` with an ad-hoc signature, and `./build.sh install` installs that. macOS treats each ad-hoc build as a new app, so you'd have to grant permissions again every time.
 
@@ -125,7 +125,7 @@ For window thumbnails, also grant **Screen Recording** permission and relaunch C
 
 - While CmdTab is running with **Cmd+Tab Shows Windows** on, it turns off the system Cmd+Tab app switcher. It turns it back on when you quit CmdTab or uncheck **Cmd+Tab Shows Windows**.
 - Permissions are tied to the code signature. When it changes (for example, the first `install.sh` run after an ad-hoc build), the install resets the old Accessibility and Screen Recording entries and you grant them once more. To sign with your own certificate instead, set `CODESIGN_IDENTITY`.
-- Like the Windows default, only windows on the current Space (desktop) are shown, unless **Include Windows from All Desktops** is on. macOS's Accessibility API doesn't list windows on other desktops, so CmdTab finds them through windows it has already seen. A window that was opened directly on another desktop, and that you haven't visited since CmdTab started, may be missing until you visit that desktop once. Windows on other desktops can't be captured live, so in thumbnail view they show their last snapshot or the app icon.
+- Like the Windows default, only windows on the current Space (desktop) are shown, unless **Include Windows from All Desktops** is on. macOS's Accessibility API doesn't list windows on other desktops, so CmdTab finds them through windows it has already seen. A window that was opened directly on another desktop, and that you haven't visited since CmdTab started, may be missing until you visit that desktop once. Windows on other desktops can't be captured live, so thumbnails and previews of them show their last snapshot or the app icon.
 
 ## License
 

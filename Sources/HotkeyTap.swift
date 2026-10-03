@@ -1,26 +1,42 @@
 import AppKit
 import CoreGraphics
 
-private enum Key {
-    static let tab: Int64 = 48
-    static let q: Int64 = 12
-    static let w: Int64 = 13
-    static let m: Int64 = 46
-    static let h: Int64 = 4
-    static let escape: Int64 = 53
-    static let returnKey: Int64 = 36
-    static let enter: Int64 = 76
-    static let left: Int64 = 123
-    static let right: Int64 = 124
-    static let down: Int64 = 125
-    static let up: Int64 = 126
+private let tabKey: Int64 = 48
+
+/// What a key means to the switcher and the Dock while they're up.
+private enum Command: Equatable {
+    case next, previous             // Tab / Shift+Tab
+    case left, right, up, down      // arrow keys
+    case activate, cancel           // Return or Enter / Esc
+    case close, quit, minimize, hide // W, Q, M, H
+
+    init?(keycode: Int64, shift: Bool) {
+        switch keycode {
+        case tabKey: self = shift ? .previous : .next
+        case 123: self = .left
+        case 124: self = .right
+        case 126: self = .up
+        case 125: self = .down
+        case 36, 76: self = .activate
+        case 53: self = .cancel
+        case 13: self = .close
+        case 12: self = .quit
+        case 46: self = .minimize
+        case 4: self = .hide
+        default: return nil
+        }
+    }
+
+    /// Holding these down acts once, not repeatedly.
+    var actsOnce: Bool { [.close, .quit, .minimize, .hide].contains(self) }
 }
 
 /// Intercepts Cmd+Tab system-wide and drives the switcher while Cmd is held, and Option+Tab for the Dock.
 @MainActor
 final class HotkeyTap {
-    private var tap: CFMachPort?
-    private var source: CFRunLoopSource?
+    private lazy var tap = EventTap(events: [.keyDown, .keyUp, .flagsChanged]) { [unowned self] type, event in
+        handle(type: type, event: event)
+    }
     private let controller: SwitcherController
     private let dock: DockController
     /// Keys whose key-down went to the Dock, so their key-up doesn't leak to the app underneath.
@@ -34,36 +50,12 @@ final class HotkeyTap {
         self.dock = dock
     }
 
-    var isRunning: Bool { tap != nil }
+    var isRunning: Bool { tap.isRunning }
 
-    func start() -> Bool {
-        if tap != nil { return true }
-        let mask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
-        let callback: CGEventTapCallBack = { _, type, event, refcon in
-            guard let refcon else { return Unmanaged.passUnretained(event) }
-            let me = Unmanaged<HotkeyTap>.fromOpaque(refcon).takeUnretainedValue()
-            return MainActor.assumeIsolated { me.handle(type: type, event: event) }
-        }
-        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
-                                          eventsOfInterest: CGEventMask(mask), callback: callback,
-                                          userInfo: Unmanaged.passUnretained(self).toOpaque()) else {
-            return false
-        }
-        self.tap = tap
-        source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        return true
-    }
+    func start() -> Bool { tap.start() }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let pass = Unmanaged.passUnretained(event)
-
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
-            return pass
-        }
-
         let flags = event.flags
         let keycode = event.getIntegerValueField(.keyboardEventKeycode)
 
@@ -82,7 +74,7 @@ final class HotkeyTap {
                 return routed ? nil : pass
             }
             if !active {
-                guard Settings.enabled, keycode == Key.tab, flags.contains(.maskCommand),
+                guard Settings.enabled, keycode == tabKey, flags.contains(.maskCommand),
                       !flags.contains(.maskControl), !flags.contains(.maskAlternate) else { return pass }
                 active = true
                 let backwards = flags.contains(.maskShift)
@@ -90,26 +82,8 @@ final class HotkeyTap {
                 DispatchQueue.main.async { self.controller.begin(backwards: backwards) }
                 return nil
             }
+            handleSwitcher(Command(keycode: keycode, shift: flags.contains(.maskShift)), isRepeat: event.isRepeat)
             // Switcher is up: everything typed while Cmd is held belongs to us (so e.g. Cmd+Q can't leak through).
-            if [Key.escape, Key.returnKey, Key.enter].contains(keycode) { active = false }
-            // Holding Q, W, M or H must act once, not repeatedly.
-            let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-            DispatchQueue.main.async { [self] in
-                switch keycode {
-                case Key.tab: controller.move(flags.contains(.maskShift) ? -1 : 1)
-                case Key.right: controller.move(1)
-                case Key.left: controller.move(-1)
-                case Key.down: controller.moveRow(1)
-                case Key.up: controller.moveRow(-1)
-                case Key.escape: controller.cancel()
-                case Key.w where !isRepeat: controller.closeSelected()
-                case Key.q where !isRepeat: controller.quitSelected()
-                case Key.m where !isRepeat: controller.toggleMinimizeSelected()
-                case Key.h where !isRepeat: controller.toggleHideSelected()
-                case Key.returnKey, Key.enter: controller.commit()
-                default: break
-                }
-            }
             return nil
 
         case .keyUp:
@@ -121,11 +95,32 @@ final class HotkeyTap {
         }
     }
 
+    /// A key typed while the switcher is up and Cmd is held.
+    private func handleSwitcher(_ command: Command?, isRepeat: Bool) {
+        if command == .activate || command == .cancel { active = false }
+        // Queued, like begin(), so keys typed right after Cmd+Tab are handled after it.
+        DispatchQueue.main.async { [self] in
+            guard let command, !(command.actsOnce && isRepeat) else { return }
+            switch command {
+            case .next, .right: controller.move(1)
+            case .previous, .left: controller.move(-1)
+            case .down: controller.moveRow(1)
+            case .up: controller.moveRow(-1)
+            case .activate: controller.commit()
+            case .cancel: controller.cancel()
+            case .close: controller.closeSelected()
+            case .quit: controller.quitSelected()
+            case .minimize: controller.toggleMinimizeSelected()
+            case .hide: controller.toggleHideSelected()
+            }
+        }
+    }
+
     /// Option+Tab opens and closes the Dock; while it's up, it gets the navigation keys. Returns true to swallow the
     /// key, false to pass it on, or nil when the Dock doesn't care and the Cmd+Tab handling should run.
     private func handleDock(keycode: Int64, flags: CGEventFlags, event: CGEvent) -> Bool? {
         let command = flags.contains(.maskCommand), option = flags.contains(.maskAlternate), control = flags.contains(.maskControl)
-        let optionTab = keycode == Key.tab && option && !command && !control
+        let optionTab = keycode == tabKey && option && !command && !control
 
         guard dock.isOpen else {
             guard optionTab, Settings.dockEnabled else { return nil }
@@ -143,23 +138,30 @@ final class HotkeyTap {
             dock.close()
             return nil
         }
-        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        switch keycode {
-        case Key.tab: dock.move(flags.contains(.maskShift) ? -1 : 1)
-        case Key.right: dock.moveHorizontal(1)
-        case Key.left: dock.moveHorizontal(-1)
-        case Key.down: dock.moveDown()
-        case Key.up: dock.moveUp()
-        case Key.w: if !isRepeat { dock.closePreviewWindow() }
-        case Key.returnKey, Key.enter: dock.activate()
-        case Key.escape: dock.close()
-        case Key.q: if !isRepeat { dock.quitSelected() }
-        case Key.h: if !isRepeat { dock.toggleHideSelected() }
-        default:
-            // Typing anything else closes the Dock and the key goes to the app underneath.
+        // Typing anything else (M included: the Dock doesn't minimize) closes the Dock and the key goes to the app.
+        guard let key = Command(keycode: keycode, shift: flags.contains(.maskShift)), key != .minimize else {
             dock.close()
             return false
         }
+        if key.actsOnce && event.isRepeat { return true }
+        switch key {
+        case .next: dock.move(1)
+        case .previous: dock.move(-1)
+        case .right: dock.moveHorizontal(1)
+        case .left: dock.moveHorizontal(-1)
+        case .down: dock.moveDown()
+        case .up: dock.moveUp()
+        case .activate: dock.activate()
+        case .cancel: dock.close()
+        case .close: dock.closePreviewWindow()
+        case .quit: dock.quitSelected()
+        case .hide: dock.toggleHideSelected()
+        case .minimize: break
+        }
         return true
     }
+}
+
+private extension CGEvent {
+    var isRepeat: Bool { getIntegerValueField(.keyboardEventAutorepeat) != 0 }
 }

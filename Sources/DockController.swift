@@ -33,10 +33,6 @@ final class DockController {
         }
     }
 
-    func toggle() {
-        isOpen ? close() : open()
-    }
-
     func open() {
         guard !isOpen else { return }
         isOpen = true
@@ -96,9 +92,7 @@ final class DockController {
     }
 
     private func moveRow(_ delta: Int) {
-        guard !items.isEmpty else { return }
-        let target = selected + delta * panels.columns
-        if items.indices.contains(target) { select(target) }
+        if let target = movedRows(selected, by: delta, columns: panels.columns, count: items.count) { select(target) }
     }
 
     /// Return or click: focus the highlighted preview's window, or else open the item like clicking it in the Dock.
@@ -206,9 +200,7 @@ final class DockController {
 
     /// Quitting, launching and hiding take a moment; re-read the Dock once they've had time to land.
     private func scheduleRefresh() {
-        for delay in [0.4, 1.2] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.refresh() }
-        }
+        afterEach([0.4, 1.2]) { [weak self] in self?.refresh() }
     }
 
     private func refresh() {
@@ -324,19 +316,4 @@ final class DockController {
         menu.popUp(positioning: nil, at: event.locationInWindow, in: event.window?.contentView)
         menuOpen = false
     }
-}
-
-/// A menu item that runs a closure.
-private final class ActionItem: NSMenuItem {
-    private let handler: () -> Void
-
-    init(_ title: String, handler: @escaping () -> Void) {
-        self.handler = handler
-        super.init(title: title, action: #selector(run), keyEquivalent: "")
-        target = self
-    }
-
-    required init(coder: NSCoder) { fatalError() }
-
-    @objc private func run() { handler() }
 }

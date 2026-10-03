@@ -56,17 +56,17 @@ enum AX {
         value(el, attr) as? [AXUIElement] ?? []
     }
 
-    static func size(_ el: AXUIElement) -> CGSize? {
-        guard let v = value(el, kAXSizeAttribute), CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
-        var s = CGSize.zero
-        return AXValueGetValue(v as! AXValue, .cgSize, &s) ? s : nil
+    /// An attribute holding an AXValue of `type` (a point, size, ...), unpacked.
+    private static func unpacked<T>(_ el: AXUIElement, _ attr: String, _ type: AXValueType, _ empty: T) -> T? {
+        guard let v = value(el, attr), CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
+        var result = empty
+        let ok = withUnsafeMutablePointer(to: &result) { AXValueGetValue(v as! AXValue, type, $0) }
+        return ok ? result : nil
     }
 
-    static func position(_ el: AXUIElement) -> CGPoint? {
-        guard let v = value(el, kAXPositionAttribute), CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
-        var p = CGPoint.zero
-        return AXValueGetValue(v as! AXValue, .cgPoint, &p) ? p : nil
-    }
+    static func size(_ el: AXUIElement) -> CGSize? { unpacked(el, kAXSizeAttribute, .cgSize, CGSize.zero) }
+
+    static func position(_ el: AXUIElement) -> CGPoint? { unpacked(el, kAXPositionAttribute, .cgPoint, CGPoint.zero) }
 
     /// The element's frame in AX coordinates (top-left origin on the primary screen).
     static func frame(_ el: AXUIElement) -> CGRect? {
@@ -88,7 +88,13 @@ enum AX {
         return _AXUIElementGetWindow(el, &wid) == .success && wid != 0 ? wid : nil
     }
 
-    static func set(_ el: AXUIElement, _ attr: String, _ value: Bool) {
-        AXUIElementSetAttributeValue(el, attr as CFString, (value ? kCFBooleanTrue : kCFBooleanFalse) as CFTypeRef)
+    @discardableResult
+    static func set(_ el: AXUIElement, _ attr: String, _ value: Bool) -> Bool {
+        AXUIElementSetAttributeValue(el, attr as CFString, (value ? kCFBooleanTrue : kCFBooleanFalse) as CFTypeRef) == .success
+    }
+
+    @discardableResult
+    static func perform(_ el: AXUIElement, _ action: String) -> Bool {
+        AXUIElementPerformAction(el, action as CFString) == .success
     }
 }

@@ -78,8 +78,7 @@ final class SwitcherController {
 
     func moveRow(_ delta: Int) {
         guard running, !windows.isEmpty else { return }
-        let target = selected + delta * panels.columns
-        if windows.indices.contains(target) { select(target) }
+        if let target = movedRows(selected, by: delta, columns: panels.columns, count: windows.count) { select(target) }
         showNow()
     }
 
@@ -156,9 +155,7 @@ final class SwitcherController {
     /// The toggles update tiles optimistically, but macOS may do more (some apps unhide when a window is
     /// un-minimized) and hide/unhide apply asynchronously. Re-read the real state once things settle.
     private func scheduleSync() {
-        for delay in [0.3, 1.0] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.syncStates() }
-        }
+        afterEach([0.3, 1.0]) { [weak self] in self?.syncStates() }
     }
 
     private func syncStates() {

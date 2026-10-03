@@ -20,12 +20,6 @@ final class PanelGroup {
     var isVisible: Bool { shownPanels.first?.isVisible ?? false }
     var columns: Int { shownPanels.first?.columns ?? 1 }
 
-    /// Whether `point` (screen coordinates) is on one of the shown panels.
-    func contains(_ point: NSPoint) -> Bool {
-        let hit = { (panel: SwitcherPanel) in panel.isVisible && NSMouseInRect(point, panel.frame, false) }
-        return shownPanels.contains(where: hit) || previewPanels.contains(where: hit)
-    }
-
     /// A grid panel, or (`preview`) a window-preview strip, wired to this group's callbacks.
     private func makePanel(preview: Bool) -> SwitcherPanel {
         let panel = SwitcherPanel()

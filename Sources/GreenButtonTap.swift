@@ -5,8 +5,9 @@ import ApplicationServices
 /// frame, instead of entering full screen. Option-click enters full screen (the system's plain-click behavior).
 @MainActor
 final class GreenButtonTap {
-    private var tap: CFMachPort?
-    private var source: CFRunLoopSource?
+    private lazy var tap = EventTap(events: [.leftMouseDown, .leftMouseUp]) { [unowned self] type, event in
+        handle(type: type, event: event)
+    }
     private let systemWide = AXUIElementCreateSystemWide()
     /// What happened to the last mouse-down on a green button, so its mouse-up gets the same treatment.
     private enum Click { case none, swallowed, optionRemoved }
@@ -19,31 +20,11 @@ final class GreenButtonTap {
         AXUIElementSetMessagingTimeout(systemWide, 0.1)
     }
 
-    func start() -> Bool {
-        if tap != nil { return true }
-        let mask = (1 << CGEventType.leftMouseDown.rawValue) | (1 << CGEventType.leftMouseUp.rawValue)
-        let callback: CGEventTapCallBack = { _, type, event, refcon in
-            guard let refcon else { return Unmanaged.passUnretained(event) }
-            let me = Unmanaged<GreenButtonTap>.fromOpaque(refcon).takeUnretainedValue()
-            return MainActor.assumeIsolated { me.handle(type: type, event: event) }
-        }
-        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
-                                          eventsOfInterest: CGEventMask(mask), callback: callback,
-                                          userInfo: Unmanaged.passUnretained(self).toOpaque()) else {
-            return false
-        }
-        self.tap = tap
-        source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        return true
-    }
+    func start() -> Bool { tap.start() }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let pass = Unmanaged.passUnretained(event)
         switch type {
-        case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
         case .leftMouseDown:
             click = .none
             guard Settings.greenButtonZooms, let window = greenButtonWindow(at: event.location) else { return pass }
