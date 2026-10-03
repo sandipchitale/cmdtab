@@ -22,15 +22,28 @@ final class PanelGroup {
 
     /// Whether `point` (screen coordinates) is on one of the shown panels.
     func contains(_ point: NSPoint) -> Bool {
-        (Array(shownPanels) + previewPanels).contains { $0.isVisible && NSMouseInRect(point, $0.frame, false) }
+        let hit = { (panel: SwitcherPanel) in panel.isVisible && NSMouseInRect(point, panel.frame, false) }
+        return shownPanels.contains(where: hit) || previewPanels.contains(where: hit)
     }
 
-    private func makePanel() -> SwitcherPanel {
+    /// A grid panel, or (`preview`) a window-preview strip, wired to this group's callbacks.
+    private func makePanel(preview: Bool) -> SwitcherPanel {
         let panel = SwitcherPanel()
-        panel.onHover = { [weak self] i in self?.onHover?(i) }
-        panel.onClick = { [weak self] i in self?.onClick?(i) }
-        panel.onRightClick = { [weak self] i, event in self?.onRightClick?(i, event) }
+        if preview {
+            panel.onHover = { [weak self] i in self?.onPreviewHover?(i) }
+            panel.onClick = { [weak self] i in self?.onPreviewClick?(i) }
+        } else {
+            panel.onHover = { [weak self] i in self?.onHover?(i) }
+            panel.onClick = { [weak self] i in self?.onClick?(i) }
+            panel.onRightClick = { [weak self] i, event in self?.onRightClick?(i, event) }
+        }
         return panel
+    }
+
+    /// Grows `pool` to `count` panels, and puts away any beyond that.
+    private func fill(_ pool: inout [SwitcherPanel], to count: Int, preview: Bool) {
+        while pool.count < count { pool.append(makePanel(preview: preview)) }
+        pool[count...].forEach { $0.dismiss() }
     }
 
     /// Shows the grid on every display, or on the one with the pointer or the active window, per the settings.
@@ -44,8 +57,7 @@ final class PanelGroup {
                 screens = [Settings.switcherDisplay == "activeWindow" ? Self.activeWindowScreen() ?? pointer : pointer]
             }
         }
-        while panels.count < screens.count { panels.append(makePanel()) }
-        panels[screens.count...].forEach { $0.dismiss() }
+        fill(&panels, to: screens.count, preview: false)
         shownPanels = panels[..<screens.count]
         for (panel, screen) in zip(shownPanels, screens) {
             panel.show(tiles: tiles, selected: selected, on: screen, thumbnails: thumbnails,
@@ -63,13 +75,7 @@ final class PanelGroup {
 
     /// Shows `tiles` as window previews hanging under tile `index` of each shown panel; `selected` nil highlights none.
     func showPreviews(tiles: [SwitcherTile], under index: Int, selected: Int?) {
-        while previewPanels.count < shownPanels.count {
-            let panel = SwitcherPanel()
-            panel.onHover = { [weak self] i in self?.onPreviewHover?(i) }
-            panel.onClick = { [weak self] i in self?.onPreviewClick?(i) }
-            previewPanels.append(panel)
-        }
-        previewPanels[shownPanels.count...].forEach { $0.dismiss() }
+        fill(&previewPanels, to: shownPanels.count, preview: true)
         for (panel, preview) in zip(shownPanels, previewPanels) {
             guard let tile = panel.tileScreenFrame(index), let screen = panel.screen else { continue }
             preview.show(tiles: tiles, selected: selected ?? -1, on: screen, thumbnails: true,
@@ -78,7 +84,7 @@ final class PanelGroup {
     }
 
     func setPreviewSelected(_ index: Int?) {
-        previewPanels.forEach { if $0.isVisible { $0.setSelected(index ?? -1) } }
+        previewPanels.forEach { $0.setSelected(index ?? -1) }
     }
 
     func setPreviewThumbnail(_ image: CGImage, for id: CGWindowID) {

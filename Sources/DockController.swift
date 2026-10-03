@@ -48,7 +48,8 @@ final class DockController {
             let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
             selected = items.firstIndex { $0.runningApp?.processIdentifier == front } ?? 0
             redraw()
-            updatePreviews()
+            // After the icons have painted.
+            DispatchQueue.main.async { self.updatePreviews() }
             // Clicks that land anywhere but our own windows close the Dock.
             outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 MainActor.assumeIsolated { self?.close() }
@@ -63,30 +64,28 @@ final class DockController {
         outsideClickMonitor = nil
         pendingPreviews?.cancel()
         pendingPreviews = nil
+        clearPreviews()
         panels.dismiss()
         items = []
-        previewWindows = []
-        previewSelected = nil
     }
 
     /// Tab / Shift+Tab: the next or previous Dock item, leaving the previews.
     func move(_ delta: Int) {
         guard isOpen, !items.isEmpty else { return }
-        select((selected + delta % items.count + items.count) % items.count)
+        select(wrapped(selected, by: delta, count: items.count))
     }
 
     /// Left / Right: between previews while in them, otherwise between Dock items.
     func moveHorizontal(_ delta: Int) {
         guard isOpen else { return }
         guard let p = previewSelected, !previewWindows.isEmpty else { return move(delta) }
-        selectPreview((p + delta % previewWindows.count + previewWindows.count) % previewWindows.count)
+        selectPreview(wrapped(p, by: delta, count: previewWindows.count))
     }
 
     /// Down: into the selected app's previews, or (in the grid layout) the row below.
     func moveDown() {
-        guard isOpen else { return }
-        if previewSelected == nil, !previewWindows.isEmpty { return selectPreview(0) }
-        if previewSelected == nil { moveRow(1) }
+        guard isOpen, previewSelected == nil else { return }
+        previewWindows.isEmpty ? moveRow(1) : selectPreview(0)
     }
 
     /// Up: from the previews back to the icons, or (in the grid layout) the row above.
@@ -97,7 +96,7 @@ final class DockController {
     }
 
     private func moveRow(_ delta: Int) {
-        guard isOpen, !items.isEmpty else { return }
+        guard !items.isEmpty else { return }
         let target = selected + delta * panels.columns
         if items.indices.contains(target) { select(target) }
     }
@@ -174,9 +173,7 @@ final class DockController {
     /// holding Tab doesn't capture every app on the way.
     private func schedulePreviews() {
         pendingPreviews?.cancel()
-        previewSelected = nil
-        previewWindows = []
-        panels.hidePreviews()
+        clearPreviews()
         let work = DispatchWorkItem { [weak self] in self?.updatePreviews() }
         pendingPreviews = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
@@ -185,16 +182,13 @@ final class DockController {
     /// Previews of the selected app's windows (per the Minimized / Hidden / All Desktops settings), with fresh snapshots.
     private func updatePreviews() {
         pendingPreviews = nil
-        guard isOpen, items.indices.contains(selected), let app = items[selected].runningApp else {
-            previewWindows = []
-            previewSelected = nil
-            return panels.hidePreviews()
-        }
-        previewWindows = WindowManager.shared.currentWindows().filter { $0.app.processIdentifier == app.processIdentifier }
+        guard isOpen else { return }
+        let app = items.indices.contains(selected) ? items[selected].runningApp : nil
+        previewWindows = app.map { WindowManager.shared.currentWindows(of: $0) } ?? []
         previewSelected = nil
         showPreviews()
         guard !previewWindows.isEmpty else { return }
-        Thumbnails.shared.refresh(previewWindows.map(\.id), pruning: false) { [weak self] id, image in
+        Thumbnails.shared.refresh(previewWindows.map(\.id)) { [weak self] id, image in
             guard let self, self.isOpen else { return }
             self.panels.setPreviewThumbnail(image, for: id)
         }
@@ -202,11 +196,13 @@ final class DockController {
 
     private func showPreviews() {
         guard !previewWindows.isEmpty else { return panels.hidePreviews() }
-        let tiles = previewWindows.map {
-            SwitcherTile(icon: $0.app.icon ?? NSImage(), name: $0.app.localizedName ?? $0.title, title: $0.title,
-                         isMinimized: $0.isMinimized, isAppHidden: $0.isAppHidden, windowID: $0.id)
-        }
-        panels.showPreviews(tiles: tiles, under: selected, selected: previewSelected)
+        panels.showPreviews(tiles: previewWindows.map(SwitcherTile.init(window:)), under: selected, selected: previewSelected)
+    }
+
+    private func clearPreviews() {
+        previewWindows = []
+        previewSelected = nil
+        panels.hidePreviews()
     }
 
     /// Quitting, launching and hiding take a moment; re-read the Dock once they've had time to land.
@@ -284,7 +280,7 @@ final class DockController {
         switch item.kind {
         case .app(let url, _, let running):
             if let running {
-                let windows = WindowManager.shared.currentWindows().filter { $0.app.processIdentifier == running.processIdentifier }
+                let windows = WindowManager.shared.currentWindows(of: running)
                 for w in windows {
                     // The Dock marks minimized windows with a diamond.
                     menu.addItem(ActionItem(w.isMinimized ? "◆ \(w.title)" : w.title) { [weak self] in

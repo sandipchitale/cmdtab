@@ -194,27 +194,37 @@ final class WindowManager {
         return found
     }
 
-    func currentWindows() -> [SwitcherWindow] {
+    func onScreenWindowIDs() -> Set<CGWindowID> { Set(zOrder()) }
+
+    /// Whether a window is minimized, or nil if the app won't say. A window that's on screen isn't minimized, whatever
+    /// the app claims (Electron apps sometimes say it is).
+    func isMinimized(_ element: AXUIElement, id: CGWindowID, onScreen: Set<CGWindowID>) -> Bool? {
+        AX.bool(element, kAXMinimizedAttribute).map { $0 && !onScreen.contains(id) }
+    }
+
+    /// Switchable windows, most recently used first: of every app, or only of `app` (for the Dock's previews).
+    func currentWindows(of app: NSRunningApplication? = nil) -> [SwitcherWindow] {
         let includeMinimized = Settings.includeMinimized
         let includeHidden = Settings.includeHiddenApps
         let includeAllSpaces = Settings.includeAllSpaces
         let z = zOrder()
+        let onScreen = Set(z)
         let zIndex = Dictionary(z.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
 
         // Make sure the window that has focus right now is at the head of the list.
         bumpFocusedWindow(of: NSWorkspace.shared.frontmostApplication)
         let mruIndex = Dictionary(mru.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
 
-        let offSpace = includeAllSpaces ? offSpaceWindows(onScreen: Set(z)) : [:]
+        let offSpace = includeAllSpaces ? offSpaceWindows(onScreen: onScreen) : [:]
         let awayIDs = Set(offSpace.values.joined())
         if includeAllSpaces {
-            let live = Set(z).union(awayIDs)
+            let live = onScreen.union(awayIDs)
             known = known.filter { live.contains($0.key) }
         }
 
         var result: [SwitcherWindow] = []
         var seen = Set<CGWindowID>()
-        for app in NSWorkspace.shared.runningApplications {
+        for app in app.map({ [$0] }) ?? NSWorkspace.shared.runningApplications {
             guard app.activationPolicy == .regular, app.processIdentifier != getpid(), !app.isTerminated else { continue }
             if app.isHidden && !includeHidden { continue }
 
@@ -235,8 +245,7 @@ final class WindowManager {
                 guard let wid = AX.windowID(win), !seen.contains(wid) else { continue }
                 if let s = AX.size(win), s.width < 40 || s.height < 40 { continue }
 
-                // A window that's on screen isn't minimized, whatever the app says (Electron apps sometimes claim it is).
-                let minimized = (AX.bool(win, kAXMinimizedAttribute) ?? false) && zIndex[wid] == nil
+                let minimized = isMinimized(win, id: wid, onScreen: onScreen) ?? false
                 if minimized && !includeMinimized { continue }
 
                 // Not minimized, not hidden, yet not on screen => it lives on another Space (or is a background tab).

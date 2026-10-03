@@ -50,6 +50,18 @@ struct SwitcherTile {
     var windowID: CGWindowID?
 }
 
+extension SwitcherTile {
+    init(window w: SwitcherWindow) {
+        self.init(icon: w.app.icon ?? NSImage(), name: w.app.localizedName ?? w.title, title: w.title,
+                  isMinimized: w.isMinimized, isAppHidden: w.isAppHidden, windowID: w.id)
+    }
+}
+
+/// `index` moved by `delta`, wrapping around a list of `count` items.
+func wrapped(_ index: Int, by delta: Int, count: Int) -> Int {
+    ((index + delta) % count + count) % count
+}
+
 /// What sits in front of a tile in the Dock-style single row.
 enum TileSeparator {
     /// An empty slot, like a Dock spacer.
@@ -186,7 +198,11 @@ final class SwitcherPanel: OverlayPanel {
             iconSides = [side] + iconSides.filter { $0 < side }
         }
         var thumbnailWidths: [CGFloat] = [320, 280, 240, 200, 170, 140]
-        if let maxTileWidth { thumbnailWidths = thumbnailWidths.filter { $0 <= maxTileWidth } }
+        if let maxTileWidth {
+            // At least the smallest size, even if it's wider than asked.
+            let fitting = thumbnailWidths.filter { $0 <= maxTileWidth }
+            thumbnailWidths = fitting.isEmpty ? [thumbnailWidths[thumbnailWidths.count - 1]] : fitting
+        }
         let sizes: [CGSize] = thumbnails
             ? thumbnailWidths.map { CGSize(width: $0, height: ($0 * 0.62 + SwitcherItemView.headerHeight).rounded()) }
             : iconSides.map { CGSize(width: $0, height: $0) }

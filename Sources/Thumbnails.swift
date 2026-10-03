@@ -7,30 +7,34 @@ final class Thumbnails {
     static let shared = Thumbnails()
 
     private var cache: [CGWindowID: CGImage] = [:]
-    /// Bumped by each refresh, per caller kind, so a newer refresh supersedes an older one of the same kind only.
-    private var generations: [Bool: Int] = [:]
+    /// Bumped by each refresh, so snapshots from a superseded one aren't reported (they're still cached).
+    private var generation = 0
 
     var hasPermission: Bool { CGPreflightScreenCaptureAccess() }
 
     func cached(_ id: CGWindowID) -> CGImage? { cache[id] }
 
+    /// Drops the snapshots of windows other than `ids`. The switcher calls this, since it lists every window.
+    func retain(only ids: [CGWindowID]) {
+        let keep = Set(ids)
+        cache = cache.filter { keep.contains($0.key) }
+    }
+
     /// Captures fresh snapshots of `ids`, reporting each as it arrives. Windows that can't be captured right now
-    /// (minimized, hidden apps) keep their last snapshot. `pruning` drops snapshots of every other window, which the
-    /// switcher wants (it lists them all) but the Dock's previews of one app don't.
-    func refresh(_ ids: [CGWindowID], pruning: Bool = true, onImage: @escaping (CGWindowID, CGImage) -> Void) {
+    /// (minimized, hidden apps) keep their last snapshot.
+    func refresh(_ ids: [CGWindowID], onImage: @escaping (CGWindowID, CGImage) -> Void) {
         let wanted = Set(ids)
-        if pruning { cache = cache.filter { wanted.contains($0.key) } }
         guard hasPermission else { return }
-        let gen = (generations[pruning] ?? 0) + 1
-        generations[pruning] = gen
+        generation += 1
+        let gen = generation
 
         Task {
             guard let content = try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true) else { return }
             for window in content.windows where wanted.contains(window.windowID) {
                 Task {
-                    guard let image = await Self.capture(window), gen == self.generations[pruning] else { return }
+                    guard let image = await Self.capture(window) else { return }
                     self.cache[window.windowID] = image
-                    onImage(window.windowID, image)
+                    if gen == self.generation { onImage(window.windowID, image) }
                 }
             }
         }

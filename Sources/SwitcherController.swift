@@ -26,10 +26,7 @@ final class SwitcherController {
     }
 
     private func showPanels() {
-        let tiles = windows.map {
-            SwitcherTile(icon: $0.app.icon ?? NSImage(), name: $0.app.localizedName ?? $0.title, title: $0.title,
-                         isMinimized: $0.isMinimized, isAppHidden: $0.isAppHidden, windowID: $0.id)
-        }
+        let tiles = windows.map(SwitcherTile.init(window:))
         // App icons are the same size as in the Option+Tab Dock.
         let thumbnails = Settings.showThumbnails
         let dock = thumbnails ? [] : DockItems.current()
@@ -43,6 +40,7 @@ final class SwitcherController {
         guard !windows.isEmpty else { return }
         selected = backwards ? windows.count - 1 : min(1, windows.count - 1)
         if Settings.showThumbnails {
+            Thumbnails.shared.retain(only: windows.map(\.id))
             Thumbnails.shared.refresh(windows.map(\.id)) { [weak self] id, image in
                 guard let self, self.running else { return }
                 self.panels.setThumbnail(image, for: id)
@@ -56,7 +54,7 @@ final class SwitcherController {
 
     func move(_ delta: Int) {
         guard running, !windows.isEmpty else { return }
-        select((selected + delta % windows.count + windows.count) % windows.count)
+        select(wrapped(selected, by: delta, count: windows.count))
         showNow()
     }
 
@@ -149,6 +147,7 @@ final class SwitcherController {
         guard running else { return }
         var changed = false
         var hiddenByPid: [pid_t: Bool] = [:]
+        let onScreen = WindowManager.shared.onScreenWindowIDs()
         for i in windows.indices {
             let app = windows[i].app
             // Ask the app via Accessibility; NSRunningApplication.isHidden can lag behind.
@@ -157,7 +156,8 @@ final class SwitcherController {
                 hiddenByPid[app.processIdentifier] = value
                 return value
             }()
-            let minimized = AX.bool(windows[i].element, kAXMinimizedAttribute) ?? windows[i].isMinimized
+            let minimized = WindowManager.shared.isMinimized(windows[i].element, id: windows[i].id, onScreen: onScreen)
+                ?? windows[i].isMinimized
             if hidden != windows[i].isAppHidden || minimized != windows[i].isMinimized {
                 windows[i].isAppHidden = hidden
                 windows[i].isMinimized = minimized
