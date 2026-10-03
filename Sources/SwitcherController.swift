@@ -23,6 +23,19 @@ final class SwitcherController {
             self.commit()
             self.onFinished?()
         }
+        // Clicking the preview switches to its window, which is the selected one.
+        panels.onPreviewClick = { [weak self] _ in
+            self?.commit()
+            self?.onFinished?()
+        }
+    }
+
+    /// In icon view, a preview of the selected window can hang below its icon, like the Dock's window previews.
+    private var showsPreview: Bool { !Settings.showThumbnails && Settings.switcherPreviews }
+
+    private func updatePreview() {
+        guard showsPreview, panels.isVisible, windows.indices.contains(selected) else { return panels.hidePreviews() }
+        panels.showPreviews(tiles: [SwitcherTile(window: windows[selected])], under: selected, selected: nil)
     }
 
     private func showPanels() {
@@ -32,6 +45,7 @@ final class SwitcherController {
         let dock = thumbnails ? [] : DockItems.current()
         panels.show(tiles: tiles, selected: selected, thumbnails: thumbnails,
                     iconsLikeDock: thumbnails ? nil : (dock.count, dock.filter(\.dividerBefore).count))
+        updatePreview()
     }
 
     func begin(backwards: Bool) {
@@ -39,11 +53,12 @@ final class SwitcherController {
         windows = WindowManager.shared.currentWindows()
         guard !windows.isEmpty else { return }
         selected = backwards ? windows.count - 1 : min(1, windows.count - 1)
-        if Settings.showThumbnails {
+        if Settings.showThumbnails || showsPreview {
             Thumbnails.shared.retain(only: windows.map(\.id))
             Thumbnails.shared.refresh(windows.map(\.id)) { [weak self] id, image in
                 guard let self, self.running else { return }
                 self.panels.setThumbnail(image, for: id)
+                self.panels.setPreviewThumbnail(image, for: id)
             }
         }
 
@@ -185,6 +200,7 @@ final class SwitcherController {
         guard windows.indices.contains(i) else { return }
         selected = i
         panels.setSelected(i)
+        if panels.isVisible { updatePreview() }
     }
 
     private func showNow() {

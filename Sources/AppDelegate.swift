@@ -5,7 +5,7 @@ enum Settings {
     private static let d = UserDefaults.standard
 
     static func register() {
-        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "dockEnabled": true, "dockPreviews": false, "showOnAllDisplays": true, "switcherDisplay": "pointer", "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
+        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "dockEnabled": true, "dockPreviews": false, "switcherPreviews": false, "showOnAllDisplays": true, "switcherDisplay": "pointer", "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
     }
 
     static var enabled: Bool {
@@ -24,6 +24,11 @@ enum Settings {
     static var dockEnabled: Bool {
         get { d.bool(forKey: "dockEnabled") }
         set { d.set(newValue, forKey: "dockEnabled") }
+    }
+    /// In icon view, the switcher previews the selected window under its icon.
+    static var switcherPreviews: Bool {
+        get { d.bool(forKey: "switcherPreviews") }
+        set { d.set(newValue, forKey: "switcherPreviews") }
     }
     /// The Option+Tab Dock previews the selected app's windows under its icon.
     static var dockPreviews: Bool {
@@ -72,24 +77,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var permissionTimer: Timer?
     private var signalSources: [DispatchSourceSignal] = []
 
-    private let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled), keyEquivalent: "")
+    private let enabledItem = NSMenuItem(title: "Cmd+Tab Shows Windows", action: #selector(toggleEnabled), keyEquivalent: "")
     private let dockItem = NSMenuItem(title: "Option+Tab Shows Dock", action: #selector(toggleDock), keyEquivalent: "")
     private let dockPreviewsItem: NSMenuItem = {
         let item = NSMenuItem(title: "Show Window Previews", action: #selector(toggleDockPreviews), keyEquivalent: "")
-        item.indentationLevel = 1
+        item.indentationLevel = 3
         return item
     }()
     private let minimizedItem = NSMenuItem(title: "Include Minimized Windows", action: #selector(toggleMinimized), keyEquivalent: "")
     private let hiddenItem = NSMenuItem(title: "Include Windows of Hidden Apps", action: #selector(toggleHidden), keyEquivalent: "")
     private let allSpacesItem = NSMenuItem(title: "Include Windows from All Desktops", action: #selector(toggleAllSpaces), keyEquivalent: "")
-    private let allDisplaysItem = NSMenuItem(title: "Show on All Displays", action: #selector(toggleAllDisplays), keyEquivalent: "")
-    private let displayItems = [("On Display with Pointer", "pointer"), ("On Display with Active Window", "activeWindow")].map { title, value in
+    /// The "Show On" choices: every display, or just the one with the pointer or the active window.
+    private let displayItems = [("All Displays", "all"), ("Display with Pointer", "pointer"),
+                                ("Display with Active Window", "activeWindow")].map { title, value in
         let item = NSMenuItem(title: title, action: #selector(setSwitcherDisplay(_:)), keyEquivalent: "")
         item.representedObject = value
-        item.indentationLevel = 1
         return item
     }
     private let iconsItem = NSMenuItem(title: "Show App Icons", action: #selector(showIcons), keyEquivalent: "")
+    private let switcherPreviewItem: NSMenuItem = {
+        let item = NSMenuItem(title: "Show Window Preview", action: #selector(toggleSwitcherPreviews), keyEquivalent: "")
+        item.indentationLevel = 6
+        return item
+    }()
     private let thumbnailsItem = NSMenuItem(title: "Show Window Thumbnails", action: #selector(showThumbnails), keyEquivalent: "")
     private let appearanceItems = [("System", "system"), ("Light", "light"), ("Dark", "dark")].map { title, value in
         let item = NSMenuItem(title: title, action: #selector(setAppearance(_:)), keyEquivalent: "")
@@ -140,7 +150,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// While we're enabled the system switcher is off, otherwise it would pop up alongside ours.
     private func applyEnabled() {
         NativeSwitcher.setEnabled(!(Settings.enabled && tap.isRunning))
-        statusItem.button?.appearsDisabled = !Settings.enabled
     }
 
     private func installSignalHandlers() {
@@ -172,16 +181,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(header)
         menu.addItem(.separator())
         menu.addItem(enabledItem)
-        menu.addItem(dockItem)
-        menu.addItem(dockPreviewsItem)
         menu.addItem(minimizedItem)
         menu.addItem(hiddenItem)
         menu.addItem(allSpacesItem)
-        menu.addItem(.separator())
         menu.addItem(iconsItem)
+        menu.addItem(switcherPreviewItem)
         menu.addItem(thumbnailsItem)
-        menu.addItem(allDisplaysItem)
-        displayItems.forEach(menu.addItem)
+        let displayMenu = NSMenu()
+        for item in displayItems {
+            item.target = self
+            displayMenu.addItem(item)
+        }
+        let displayItem = NSMenuItem(title: "Show On", action: nil, keyEquivalent: "")
+        displayItem.submenu = displayMenu
+        menu.addItem(displayItem)
+        // The Cmd+Tab options sit under "Cmd+Tab Shows Windows".
+        for item in [minimizedItem, hiddenItem, allSpacesItem, iconsItem, thumbnailsItem, displayItem] { item.indentationLevel = 3 }
+        menu.addItem(.separator())
+        menu.addItem(dockItem)
+        menu.addItem(dockPreviewsItem)
+        menu.addItem(.separator())
         let appearanceMenu = NSMenu()
         for item in appearanceItems {
             item.target = self
@@ -211,11 +230,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         minimizedItem.state = Settings.includeMinimized ? .on : .off
         hiddenItem.state = Settings.includeHiddenApps ? .on : .off
         allSpacesItem.state = Settings.includeAllSpaces ? .on : .off
-        allDisplaysItem.state = Settings.showOnAllDisplays ? .on : .off
+        let display = Settings.showOnAllDisplays ? "all" : Settings.switcherDisplay
         for item in displayItems {
-            item.state = item.representedObject as? String == Settings.switcherDisplay ? .on : .off
+            item.state = item.representedObject as? String == display ? .on : .off
         }
         iconsItem.state = Settings.showThumbnails ? .off : .on
+        switcherPreviewItem.state = Settings.switcherPreviews ? .on : .off
         thumbnailsItem.state = Settings.showThumbnails ? .on : .off
         for item in appearanceItems {
             item.state = item.representedObject as? String == Settings.appearance ? .on : .off
@@ -240,6 +260,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let trusted = AXIsProcessTrusted()
         permissionItem.title = trusted ? "Accessibility Permission: Granted" : "Grant Accessibility Permission…"
         permissionItem.state = trusted ? .on : .off
+    }
+
+    @objc private func toggleSwitcherPreviews() {
+        Settings.switcherPreviews.toggle()
+        // Prompts (or opens System Settings) the first time; until granted, the preview shows the app icon.
+        if Settings.switcherPreviews && !Thumbnails.shared.hasPermission { CGRequestScreenCaptureAccess() }
+        updateMenu()
     }
 
     @objc private func toggleDockPreviews() {
@@ -274,22 +301,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateMenu()
     }
 
-    @objc private func toggleAllDisplays() {
-        Settings.showOnAllDisplays.toggle()
-        updateMenu()
-    }
-
     @objc private func setSwitcherDisplay(_ sender: NSMenuItem) {
         guard let value = sender.representedObject as? String else { return }
-        Settings.switcherDisplay = value
+        Settings.showOnAllDisplays = value == "all"
+        if value != "all" { Settings.switcherDisplay = value }
         updateMenu()
     }
 
-    /// The display choices only matter while the switcher isn't shown on every display, and Dock previews while the
-    /// Dock is on.
+    /// The Cmd+Tab options only matter while Cmd+Tab shows windows (the preview only in icon view), and Dock previews
+    /// while the Dock is on.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if displayItems.contains(item) { return !Settings.showOnAllDisplays }
         if item == dockPreviewsItem { return Settings.dockEnabled }
+        if item == switcherPreviewItem { return Settings.enabled && !Settings.showThumbnails }
+        if [minimizedItem, hiddenItem, allSpacesItem, iconsItem, thumbnailsItem].contains(item) || displayItems.contains(item) {
+            return Settings.enabled
+        }
         return true
     }
 

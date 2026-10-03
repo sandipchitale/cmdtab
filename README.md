@@ -32,7 +32,7 @@ W, Q, M and H act on the selected tile and keep the switcher open, so you can ti
 
 ## Views
 
-- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, and its app name floats in a bubble above it, like the Dock's. Rest the pointer on an icon to see that window's title in a tooltip.
+- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, and its app name floats in a bubble above it, like the Dock's. Rest the pointer on an icon to see that window's title in a tooltip. With **Show Window Preview** on, a snapshot of the selected window also hangs below its icon.
 - **Window thumbnails**: a live snapshot of each window, with the app icon and window title above it. The selected tile gets the same darker rounded background as in icon view.
 
 On macOS 26 and later, the switcher panel uses the same Liquid Glass material as the native switcher. Earlier versions get a blurred, tinted panel instead. Either way it follows the **Appearance** setting.
@@ -87,19 +87,20 @@ Opening an app activates it (launching it if needed), the same as a Dock click. 
 - **Other apps and folders:** Open, Show in Finder.
 - **Trash:** Open, Empty Trash.
 
-The menus never change your real Dock (no Keep in Dock / Remove from Dock). Items an app adds to its own Dock menu, such as a browser's New Window, aren't available to other apps, so they're not shown. The Dock follows the same **Show on All Displays** / display choice as the switcher.
+The menus never change your real Dock (no Keep in Dock / Remove from Dock). Items an app adds to its own Dock menu, such as a browser's New Window, aren't available to other apps, so they're not shown. The Dock follows the same **Show On** choice as the switcher.
 
 ## Menu
 
 The menu bar icon has these options:
 
-- **Enabled**: turn CmdTab on or off. While it's off, the system Cmd+Tab works as usual.
-- **Option+Tab Shows Dock**: turn the [Dock](#dock-optiontab) on or off. It works independently of **Enabled**.
+- **Cmd+Tab Shows Windows**: turn the window switcher on or off. While it's off, the system Cmd+Tab works as usual. Its options are indented under it:
+  - **Include Minimized Windows** / **Include Windows of Hidden Apps**: show or skip those windows.
+  - **Include Windows from All Desktops**: also list windows on other Spaces (desktops), including full-screen ones. Picking one switches to its desktop. Off by default.
+  - **Show App Icons** / **Show Window Thumbnails**: choose the view.
+    - **Show Window Preview** (icon view, off by default): a snapshot of the selected window hangs below its icon, like the Dock's window previews. Click it to switch to that window.
+  - **Show On**: where the switcher appears. **All Displays** (the default) shows it on every display; arrow keys follow the grid on the pointer's display. **Display with Pointer** or **Display with Active Window** (the display showing most of the frontmost window) shows it on just one.
+- **Option+Tab Shows Dock**: turn the [Dock](#dock-optiontab) on or off. It works independently of **Cmd+Tab Shows Windows**.
   - **Show Window Previews**: preview the selected app's windows under its icon in the Dock. Off by default.
-- **Include Minimized Windows** / **Include Windows of Hidden Apps**: show or skip those windows.
-- **Include Windows from All Desktops**: also list windows on other Spaces (desktops), including full-screen ones. Picking one switches to its desktop. Off by default.
-- **Show App Icons** / **Show Window Thumbnails**: choose the view.
-- **Show on All Displays**: show the switcher on every display, not just the one with the pointer. On by default. Arrow keys follow the grid on the pointer's display. When it's off, choose **On Display with Pointer** or **On Display with Active Window** (the display showing most of the frontmost window).
 - **Appearance**: System, Light or Dark, for the switcher panel only.
 - **Green Button Toggles Maximize Instead of Full Screen**: see [Green button](#green-button). On by default.
 - **Launch at Login**
@@ -122,7 +123,7 @@ For window thumbnails, also grant **Screen Recording** permission and relaunch C
 
 ## Notes
 
-- While CmdTab is running and enabled, it turns off the system Cmd+Tab app switcher. It turns it back on when you quit CmdTab or uncheck **Enabled**.
+- While CmdTab is running with **Cmd+Tab Shows Windows** on, it turns off the system Cmd+Tab app switcher. It turns it back on when you quit CmdTab or uncheck **Cmd+Tab Shows Windows**.
 - Permissions are tied to the code signature. When it changes (for example, the first `install.sh` run after an ad-hoc build), the install resets the old Accessibility and Screen Recording entries and you grant them once more. To sign with your own certificate instead, set `CODESIGN_IDENTITY`.
 - Like the Windows default, only windows on the current Space (desktop) are shown, unless **Include Windows from All Desktops** is on. macOS's Accessibility API doesn't list windows on other desktops, so CmdTab finds them through windows it has already seen. A window that was opened directly on another desktop, and that you haven't visited since CmdTab started, may be missing until you visit that desktop once. Windows on other desktops can't be captured live, so in thumbnail view they show their last snapshot or the app icon.
 
