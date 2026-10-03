@@ -4,7 +4,7 @@ A tiny menu bar app that makes **Cmd+Tab switch between windows** the way Alt+Ta
 
 ## Switcher
 
-![CmdTab switcher in icon view, with the selected app highlighted and its name below](screenshots/cmdtab-switcher-icons.png)
+![CmdTab switcher in icon view, with the selected app highlighted and its name above](screenshots/cmdtab-switcher-icons.png)
 
 ![CmdTab switcher in thumbnail view, with the selected window highlighted and hidden-app badges](screenshots/cmdtab-switcher.png)
 
@@ -32,7 +32,7 @@ W, Q, M and H act on the selected tile and keep the switcher open, so you can ti
 
 ## Views
 
-- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, with its app name centered below it. Rest the pointer on an icon to see that window's title in a tooltip.
+- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, and its app name floats in a bubble above it, like the Dock's. Rest the pointer on an icon to see that window's title in a tooltip.
 - **Window thumbnails**: a live snapshot of each window, with the app icon and window title above it. The selected tile gets the same darker rounded background as in icon view.
 
 On macOS 26 and later, the switcher panel uses the same Liquid Glass material as the native switcher. Earlier versions get a blurred, tinted panel instead. Either way it follows the **Appearance** setting.
@@ -57,11 +57,39 @@ A plain click on a window's green button maximizes the window to fill the screen
 
 Option-click the green button to go full screen, which is what a plain click does in standard macOS. Only clicks that land on the green button are affected, and hovering still shows the button's tiling menu. Turn this off in the menu to get the standard behavior back.
 
+## Dock (Option+Tab)
+
+![CmdTab Dock switcher: a Dock-like row of apps, folders and the Trash, with the selected app's name above it](screenshots/alttab-switcher.png)
+
+Press **Option+Tab** to bring up a Dock on the current display, laid out like the real one: Finder, your pinned apps with their spacers, the recent apps section (if it's on in Dock settings), running apps that aren't pinned, then a divider, your Dock folders (such as Downloads), and the Trash. Running apps have a dot under the icon, hidden apps get the ◯ badge, and the selected item's name floats above it. It's handy with several displays, or with the real Dock hidden.
+
+Unlike Cmd+Tab, it stays up after you let go of Option, until you pick something, press Esc or Option+Tab again, or click outside it.
+
+| Key | Action |
+| --- | --- |
+| Tab / Shift+Tab, ← → | Next / previous item |
+| Return, or click | Open the item, like clicking it in the Dock |
+| Q | Quit the selected app |
+| H | Hide / show the selected app |
+| Esc, Option+Tab, or click outside | Close |
+| Any other key | Close, and the key goes to the app you're in |
+
+Opening an app activates it (launching it if needed), the same as a Dock click. Folders open in Finder.
+
+**Right-click** a tile for its menu:
+
+- **Running app:** its windows (choose one to bring it forward; ◆ marks minimized ones), Show in Finder, Hide/Show, Quit. Hold Option for Force Quit.
+- **Other apps and folders:** Open, Show in Finder.
+- **Trash:** Open, Empty Trash.
+
+The menus never change your real Dock (no Keep in Dock / Remove from Dock). Items an app adds to its own Dock menu, such as a browser's New Window, aren't available to other apps, so they're not shown. The Dock follows the same **Show on All Displays** / display choice as the switcher.
+
 ## Menu
 
 The menu bar icon has these options:
 
 - **Enabled**: turn CmdTab on or off. While it's off, the system Cmd+Tab works as usual.
+- **Option+Tab Shows Dock**: turn the [Dock](#dock-optiontab) on or off. It works independently of **Enabled**.
 - **Include Minimized Windows** / **Include Windows of Hidden Apps**: show or skip those windows.
 - **Include Windows from All Desktops**: also list windows on other Spaces (desktops), including full-screen ones. Picking one switches to its desktop. Off by default.
 - **Show App Icons** / **Show Window Thumbnails**: choose the view.

@@ -35,32 +35,68 @@ extension NSScreen {
     }
 }
 
+/// One tile in the grid: a window (Cmd+Tab) or a Dock item (Option+Tab).
+struct SwitcherTile {
+    let icon: NSImage
+    /// Shown under the selected icon in icon view.
+    let name: String
+    /// The hover tooltip in icon view, and the header in thumbnail view.
+    let title: String
+    var isMinimized = false
+    var isAppHidden = false
+    /// Draws the Dock's running-app dot under the icon.
+    var isRunning = false
+    /// The window to show a snapshot of in thumbnail view.
+    var windowID: CGWindowID?
+}
+
+/// What sits in front of a tile in the Dock-style single row.
+enum TileSeparator {
+    /// An empty slot, like a Dock spacer.
+    case space
+    /// A thin vertical line, like the Dock's section divider.
+    case divider
+}
+
 /// The floating Alt+Tab-style grid.
 @MainActor
 final class SwitcherPanel: OverlayPanel {
     var onHover: ((Int) -> Void)?
     var onClick: ((Int) -> Void)?
+    var onRightClick: ((Int, NSEvent) -> Void)?
     private(set) var columns = 1
 
-    /// Holds the tiles and the title label; sits inside the glass (or the fallback blur).
+    /// Holds the tiles; sits inside the glass (or the fallback blur).
     private let content = NSView()
     /// Only in the pre-Liquid Glass fallback: tones down the blur's see-through look.
     private var tint: NSView?
     /// A hairline in the opposite tone of the panel, so it doesn't melt into a matching light or dark background.
     private let border = NSView()
-    private let titleLabel = NSTextField(labelWithString: "")
     private let tooltip = TooltipWindow()
+    /// In icon view, the selected item's name floats in a bubble above its icon, like the Dock's.
+    private let nameBubble = TooltipWindow()
     private var pendingTooltip: DispatchWorkItem?
     private var tooltipIndex: Int?
     private var items: [SwitcherItemView] = []
-    private var windowsShown: [SwitcherWindow] = []
+    /// Dividers drawn between tiles in the single-row layout.
+    private var decorations: [NSView] = []
+    private var tilesShown: [SwitcherTile] = []
     private var mouseAtShow = NSPoint.zero
     private var showsThumbnails = false
 
     private let padding: CGFloat = 20
     private let cornerRadius: CGFloat = 26
-    /// Room under each row of icons for the selected window's title, like the native switcher.
-    private let labelHeight: CGFloat = 22
+    /// The margin around icon tiles. Thumbnail tiles carry their own title row, so they get `padding`.
+    private static let iconPadding: CGFloat = 14
+    /// In the Dock-style row: the space between icons, and the extra gap for a spacer or divider, per icon side.
+    private static let rowSpacingRatio: CGFloat = 0.1, gapRatio: CGFloat = 0.5
+
+    /// The icon size of a Dock-style row of `count` items with `gaps` spacers/dividers across `area`, at most 120.
+    static func dockIconSide(count: Int, gaps: Int, area: NSRect) -> CGFloat {
+        let n = CGFloat(max(count, 1))
+        let fitted = (area.width * 0.92 - iconPadding * 2) / (n + rowSpacingRatio * (n - 1) + gapRatio * CGFloat(gaps))
+        return min(fitted.rounded(.down), 120)
+    }
 
     override init() {
         super.init()
@@ -100,19 +136,19 @@ final class SwitcherPanel: OverlayPanel {
         border.layer?.borderWidth = 1
         border.autoresizingMask = [.width, .height]
         content.addSubview(border)
-
-        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-        titleLabel.textColor = .labelColor
-        titleLabel.alignment = .center
-        titleLabel.lineBreakMode = .byTruncatingMiddle
-        content.addSubview(titleLabel)
     }
 
-    func show(windows: [SwitcherWindow], selected: Int, on screen: NSScreen) {
+    /// Lays out `tiles` as a grid, or (with `dockStyle`) like the Dock: one row whose icons shrink to fit the width,
+    /// with gaps and dividers in front of the tiles listed in `separators`, and the selected name above its icon.
+    /// `iconsLikeDock` (count and spacers of the Dock) sizes icon tiles the same as the Dock-style row would be.
+    func show(tiles: [SwitcherTile], selected: Int, on screen: NSScreen, thumbnails: Bool,
+              dockStyle: Bool = false, separators: [Int: TileSeparator] = [:], iconsLikeDock: (count: Int, gaps: Int)? = nil) {
         hideTooltip()
-        windowsShown = windows
+        tilesShown = tiles
         items.forEach { $0.removeFromSuperview() }
         items = []
+        decorations.forEach { $0.removeFromSuperview() }
+        decorations = []
 
         let mouse = NSEvent.mouseLocation
         mouseAtShow = mouse
@@ -131,85 +167,130 @@ final class SwitcherPanel: OverlayPanel {
             }
         }
 
-        // Thumbnail tiles carry their own title; icon tiles show the selected window's title underneath.
-        let thumbnails = Settings.showThumbnails
+        // Thumbnail tiles carry their own title; icon tiles show the selected tile's name in a bubble above it.
         showsThumbnails = thumbnails
         let spacing: CGFloat = 12
-        let label = thumbnails ? 0 : labelHeight
+        var iconSides: [CGFloat] = [120, 104, 88, 76, 64]
+        if let dock = iconsLikeDock {
+            // The Dock's icon size first, then smaller sizes in case that many windows don't fit.
+            let side = max(Self.dockIconSide(count: dock.count, gaps: dock.gaps, area: area), 36)
+            iconSides = [side] + iconSides.filter { $0 < side }
+        }
         let sizes: [CGSize] = thumbnails
             ? ([320, 280, 240, 200, 170, 140] as [CGFloat]).map { CGSize(width: $0, height: ($0 * 0.62 + SwitcherItemView.headerHeight).rounded()) }
-            : ([120, 104, 88, 76, 64] as [CGFloat]).map { CGSize(width: $0, height: $0) }
+            : iconSides.map { CGSize(width: $0, height: $0) }
 
-        // Pick the largest tile size that fits everything on screen.
+        // The same margin on all four sides.
+        let edge = thumbnails ? padding : Self.iconPadding
+        var frames: [NSRect] = []
+        var dividerXs: [CGFloat] = []
         var tile = sizes[0]
+        var width: CGFloat = 0
         var height: CGFloat = 0
-        for size in sizes {
-            tile = size
-            let maxCols = max(1, Int((area.width * 0.92 - padding * 2 + spacing) / (size.width + spacing)))
-            columns = min(windows.count, maxCols)
-            let rows = Int(ceil(Double(windows.count) / Double(columns)))
-            height = CGFloat(rows) * (size.height + label + spacing) - spacing + padding * 2
-            if height <= area.height * 0.9 { break }
+
+        // Dock-style row: the icon size that fits every tile, plus half-tile gaps for separators, across the screen.
+        let gapCount = separators.keys.filter { $0 > 0 && $0 < tiles.count }.count
+        let fitted = Self.dockIconSide(count: tiles.count, gaps: gapCount, area: area)
+        if dockStyle && !thumbnails && fitted >= 36 {
+            let side = fitted
+            tile = CGSize(width: side, height: side)
+            let gap = (side * Self.gapRatio).rounded(), rowSpacing = (side * Self.rowSpacingRatio).rounded()
+            columns = tiles.count
+            height = side + edge * 2
+            var x = edge
+            for i in tiles.indices {
+                if i > 0 {
+                    x += rowSpacing
+                    if let sep = separators[i] {
+                        if sep == .divider { dividerXs.append(x + gap / 2 - rowSpacing / 2) }
+                        x += gap
+                    }
+                }
+                frames.append(NSRect(x: x, y: edge, width: side, height: side))
+                x += side
+            }
+            width = x + edge
+        } else {
+            // Pick the largest tile size that fits everything on screen.
+            for size in sizes {
+                tile = size
+                let maxCols = max(1, Int((area.width * 0.92 - edge * 2 + spacing) / (size.width + spacing)))
+                columns = min(tiles.count, maxCols)
+                let rows = Int(ceil(Double(tiles.count) / Double(columns)))
+                height = CGFloat(rows) * (size.height + spacing) - spacing + edge * 2
+                if height <= area.height * 0.9 { break }
+            }
+            width = CGFloat(columns) * (tile.width + spacing) - spacing + edge * 2
+            for i in tiles.indices {
+                let x = edge + CGFloat(i % columns) * (tile.width + spacing)
+                let y = height - edge - tile.height - CGFloat(i / columns) * (tile.height + spacing)
+                frames.append(NSRect(x: x, y: y, width: tile.width, height: tile.height))
+            }
         }
 
-        let width = CGFloat(columns) * (tile.width + spacing) - spacing + padding * 2
         let frame = NSRect(x: area.midX - width / 2, y: area.midY - height / 2, width: width, height: height)
         setFrame(frame, display: false)
         content.frame = NSRect(x: 0, y: 0, width: width, height: height)
         border.frame = content.bounds
         invalidateShadow()
 
-        titleLabel.isHidden = thumbnails
 
-        for (i, w) in windows.enumerated() {
-            let col = i % columns
-            let row = i / columns
-            let x = padding + CGFloat(col) * (tile.width + spacing)
-            let y = height - padding - tile.height - CGFloat(row) * (tile.height + label + spacing)
-            let item = SwitcherItemView(frame: NSRect(x: x, y: y, width: tile.width, height: tile.height),
-                                        window: w, index: i, thumbnail: thumbnails)
-            // Hover drives two independent things: selection, and (icon view only) the title tooltip.
+        for x in dividerXs {
+            let line = DividerLine(frame: NSRect(x: x - 0.5, y: edge + tile.height * 0.1, width: 1, height: tile.height * 0.8))
+            content.addSubview(line)
+            decorations.append(line)
+        }
+
+        for (i, t) in tiles.enumerated() {
+            let item = SwitcherItemView(frame: frames[i], tile: t, index: i, thumbnail: thumbnails)
+            // Hover drives two independent things: selection, and (icon view only) a tooltip with the full title when
+            // it says more than the name bubble (a window's title, a folder's path).
             item.onHover = { [weak self] idx in
                 guard let self, NSEvent.mouseLocation != self.mouseAtShow else { return } // ignore until the mouse actually moves
                 if !self.items[idx].isSelected { self.onHover?(idx) }
-                if !thumbnails { self.scheduleTooltip(for: idx) }
+                if !thumbnails && t.title != t.name { self.scheduleTooltip(for: idx) }
             }
             item.onHoverEnd = { [weak self] idx in
                 if self?.tooltipIndex == idx { self?.hideTooltip() }
             }
             item.onClick = { [weak self] idx in self?.onClick?(idx) }
+            item.onRightClick = { [weak self] idx, event in
+                self?.hideTooltip()
+                self?.onRightClick?(idx, event)
+            }
             content.addSubview(item)
             items.append(item)
         }
 
         content.addSubview(border, positioned: .above, relativeTo: nil)
-        setSelected(selected)
         alphaValue = 1
         orderFrontRegardless()
+        setSelected(selected)
     }
 
     func setSelected(_ index: Int) {
         for (i, item) in items.enumerated() { item.isSelected = i == index }
         guard !showsThumbnails, items.indices.contains(index) else { return }
+        showNameBubble(for: index)
+    }
 
-        // Like the native switcher: the app name sits just below the selected icon, and may be wider than the tile.
-        // The window title is in the hover tooltip.
-        let w = windowsShown[index]
-        titleLabel.stringValue = w.app.localizedName ?? w.title
+    private func showNameBubble(for index: Int) {
+        guard isVisible else { return }
         let tile = items[index].frame
-        let bounds = content.bounds
-        // Always centered on the icon; near the panel's edges a long name is truncated rather than shifted.
-        let room = 2 * min(tile.midX - 8, bounds.width - 8 - tile.midX)
-        let width = min(titleLabel.intrinsicContentSize.width + 8, room)
-        titleLabel.frame = NSRect(x: tile.midX - width / 2, y: tile.minY - labelHeight + 3, width: width, height: 17)
+        // Above the panel for the top row, like the Dock; lower rows get it just above their icon.
+        let topRow = tile.maxY >= content.bounds.maxY - padding
+        let y = topRow ? frame.maxY + 6 : frame.minY + tile.maxY + 2
+        nameBubble.show(tilesShown[index].name, centeredAbove: NSPoint(x: frame.minX + tile.midX, y: y),
+                        appearance: contentAppearance)
+        if nameBubble.parent == nil { addChildWindow(nameBubble, ordered: .above) }
     }
 
     /// Shows the hovered window's title after a short pause, like a tooltip.
     private func scheduleTooltip(for index: Int) {
-        guard tooltipIndex != index, windowsShown.indices.contains(index) else { return }
+        guard tooltipIndex != index, tilesShown.indices.contains(index) else { return }
         hideTooltip()
         tooltipIndex = index
-        let title = windowsShown[index].title
+        let title = tilesShown[index].title
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.isVisible else { return }
             self.tooltip.show(title, near: NSEvent.mouseLocation, appearance: self.contentAppearance)
@@ -233,10 +314,14 @@ final class SwitcherPanel: OverlayPanel {
 
     func dismiss() {
         hideTooltip()
+        if nameBubble.parent != nil { removeChildWindow(nameBubble) }
+        nameBubble.orderOut(nil)
         orderOut(nil)
         items.forEach { $0.removeFromSuperview() }
         items = []
-        windowsShown = []
+        decorations.forEach { $0.removeFromSuperview() }
+        decorations = []
+        tilesShown = []
     }
 }
 
@@ -247,8 +332,9 @@ final class SwitcherItemView: NSView {
     var onHover: ((Int) -> Void)?
     var onHoverEnd: ((Int) -> Void)?
     var onClick: ((Int) -> Void)?
+    var onRightClick: ((Int, NSEvent) -> Void)?
     var isSelected = false { didSet { if oldValue != isSelected { needsDisplay = true } } }
-    let windowID: CGWindowID
+    let windowID: CGWindowID?
 
     private let index: Int
     private let showsThumbnail: Bool
@@ -257,11 +343,11 @@ final class SwitcherItemView: NSView {
     private let imageView = NSImageView()
     private let inset: CGFloat = 8
 
-    init(frame: NSRect, window: SwitcherWindow, index: Int, thumbnail: Bool) {
+    init(frame: NSRect, tile: SwitcherTile, index: Int, thumbnail: Bool) {
         self.index = index
-        self.windowID = window.id
+        self.windowID = tile.windowID
         self.showsThumbnail = thumbnail
-        self.appIcon = window.app.icon ?? NSImage()
+        self.appIcon = tile.icon
         super.init(frame: frame)
 
         let badgeSize: CGFloat = 14
@@ -272,10 +358,16 @@ final class SwitcherItemView: NSView {
             iconView.imageScaling = .scaleProportionallyUpOrDown
             iconView.frame = bounds.insetBy(dx: inset, dy: inset)
             addSubview(iconView)
-            if window.isMinimized || window.isAppHidden {
+            if tile.isMinimized || tile.isAppHidden {
                 addSubview(StateBadge(frame: NSRect(x: iconView.frame.maxX - badgeSize - 2, y: iconView.frame.minY + 2,
                                                     width: badgeSize, height: badgeSize),
-                                      minimized: window.isMinimized, hidden: window.isAppHidden))
+                                      minimized: tile.isMinimized, hidden: tile.isAppHidden))
+            }
+            if tile.isRunning {
+                // Like the Dock: a small dot just under the icon.
+                let side: CGFloat = 5
+                addSubview(RunningDot(frame: NSRect(x: bounds.midX - side / 2, y: max(1, iconView.frame.minY / 2 - side / 2),
+                                                    width: side, height: side)))
             }
             return
         }
@@ -289,24 +381,24 @@ final class SwitcherItemView: NSView {
         iconView.frame = NSRect(x: inset + 2, y: headerMidY - iconSize / 2, width: iconSize, height: iconSize)
         addSubview(iconView)
 
-        let label = NSTextField(labelWithString: window.title)
+        let label = NSTextField(labelWithString: tile.title)
         label.font = .systemFont(ofSize: 13, weight: .medium)
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
         let labelX = iconView.frame.maxX + 6
         var labelRight = frame.width - inset
-        if window.isMinimized || window.isAppHidden {
+        if tile.isMinimized || tile.isAppHidden {
             labelRight -= badgeSize + 6
             addSubview(StateBadge(frame: NSRect(x: frame.width - inset - 2 - badgeSize, y: headerMidY - badgeSize / 2,
                                                 width: badgeSize, height: badgeSize),
-                                  minimized: window.isMinimized, hidden: window.isAppHidden))
+                                  minimized: tile.isMinimized, hidden: tile.isAppHidden))
         }
         label.frame = NSRect(x: labelX, y: headerMidY - 9, width: labelRight - labelX, height: 18)
         addSubview(label)
 
         imageView.imageScaling = .scaleProportionallyUpOrDown
         addSubview(imageView)
-        if let image = Thumbnails.shared.cached(window.id) { setThumbnail(image) } else { showPlaceholder() }
+        if let id = tile.windowID, let image = Thumbnails.shared.cached(id) { setThumbnail(image) } else { showPlaceholder() }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -359,6 +451,23 @@ final class SwitcherItemView: NSView {
     override func mouseExited(with event: NSEvent) { onHoverEnd?(index) }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) { onClick?(index) }
+    override func rightMouseDown(with event: NSEvent) { onRightClick?(index, event) }
+}
+
+/// The Dock's section divider.
+final class DividerLine: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.3).setFill()
+        bounds.fill()
+    }
+}
+
+/// The Dock's running-app indicator.
+final class RunningDot: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.8).setFill()
+        NSBezierPath(ovalIn: bounds).fill()
+    }
 }
 
 /// Yellow badge for a window's state: a ring means its app is hidden, a centered dot means the window is minimized.
@@ -435,18 +544,33 @@ final class TooltipWindow: OverlayPanel {
 
     /// Shows `text` just below and right of `point` (screen coordinates), kept on screen.
     func show(_ text: String, near point: NSPoint, appearance: NSAppearance) {
+        let size = prepare(text, appearance: appearance)
+        place(NSPoint(x: point.x + 4, y: point.y - 22 - size.height), size: size, screenOf: point)
+    }
+
+    /// Shows `text` centered horizontally on `point` with its bottom edge there, like the Dock's name labels.
+    func show(_ text: String, centeredAbove point: NSPoint, appearance: NSAppearance) {
+        let size = prepare(text, appearance: appearance)
+        place(NSPoint(x: point.x - size.width / 2, y: point.y), size: size, screenOf: point)
+    }
+
+    private func prepare(_ text: String, appearance: NSAppearance) -> NSSize {
         contentAppearance = appearance
         label.stringValue = text
         // intrinsicContentSize comes out a few points narrower than the text needs, which truncates every title.
         let cellSize = label.cell?.cellSize ?? label.intrinsicContentSize
         let textSize = NSSize(width: ceil(cellSize.width), height: ceil(cellSize.height))
-        let size = NSSize(width: min(textSize.width + 14, 600), height: textSize.height + 6)
+        label.frame = NSRect(x: 7, y: 3, width: min(textSize.width, 586), height: textSize.height)
+        return NSSize(width: min(textSize.width + 14, 600), height: textSize.height + 6)
+    }
+
+    /// Puts the window at `origin`, kept on the screen containing `point`.
+    private func place(_ origin: NSPoint, size: NSSize, screenOf point: NSPoint) {
         let screen = NSScreen.containing(point).visibleFrame
-        var origin = NSPoint(x: point.x + 4, y: point.y - 22 - size.height)
+        var origin = origin
         origin.x = min(max(origin.x, screen.minX + 4), screen.maxX - size.width - 4)
-        origin.y = max(origin.y, screen.minY + 4)
+        origin.y = min(max(origin.y, screen.minY + 4), screen.maxY - size.height - 4)
         setFrame(NSRect(origin: origin, size: size), display: false)
-        label.frame = NSRect(x: 7, y: 3, width: size.width - 14, height: textSize.height)
         orderFrontRegardless()
     }
 }

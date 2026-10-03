@@ -3,11 +3,7 @@ import AppKit
 /// State machine for one Cmd+Tab session: begin -> move* -> commit | cancel.
 @MainActor
 final class SwitcherController {
-    /// One panel per display it's shown on. The first is on the display with the pointer and drives grid navigation.
-    private var panels: [SwitcherPanel] = []
-    private var shownPanels: ArraySlice<SwitcherPanel> = []
-    /// The displays for this session, picked when the grid first appears so redraws don't make it jump.
-    private var screens: [NSScreen] = []
+    private let panels = PanelGroup()
     private var windows: [SwitcherWindow] = []
     private var selected = 0
     private var pendingShow: DispatchWorkItem?
@@ -19,46 +15,26 @@ final class SwitcherController {
     /// A quick Cmd+Tab tap shorter than this switches without ever flashing the UI (like Windows).
     private let showDelay: TimeInterval = 0.12
 
-    private func makePanel() -> SwitcherPanel {
-        let panel = SwitcherPanel()
-        panel.onHover = { [weak self] i in self?.select(i) }
-        panel.onClick = { [weak self] i in
+    init() {
+        panels.onHover = { [weak self] i in self?.select(i) }
+        panels.onClick = { [weak self] i in
             guard let self else { return }
             self.select(i)
             self.commit()
             self.onFinished?()
         }
-        return panel
     }
 
-    private var isVisible: Bool { shownPanels.first?.isVisible ?? false }
-
-    /// Shows the grid on every display, or on the one with the pointer or the active window, per the settings.
     private func showPanels() {
-        if screens.isEmpty {
-            let pointer = NSScreen.containing(NSEvent.mouseLocation)
-            if Settings.showOnAllDisplays {
-                screens = [pointer] + NSScreen.screens.filter { $0 != pointer }
-            } else {
-                screens = [Settings.switcherDisplay == "activeWindow" ? activeWindowScreen() ?? pointer : pointer]
-            }
+        let tiles = windows.map {
+            SwitcherTile(icon: $0.app.icon ?? NSImage(), name: $0.app.localizedName ?? $0.title, title: $0.title,
+                         isMinimized: $0.isMinimized, isAppHidden: $0.isAppHidden, windowID: $0.id)
         }
-        while panels.count < screens.count { panels.append(makePanel()) }
-        panels[screens.count...].forEach { $0.dismiss() }
-        shownPanels = panels[..<screens.count]
-        for (panel, screen) in zip(shownPanels, screens) { panel.show(windows: windows, selected: selected, on: screen) }
-    }
-
-    /// The display showing most of the frontmost window (the one you're switching away from).
-    private func activeWindowScreen() -> NSScreen? {
-        guard let app = NSWorkspace.shared.frontmostApplication,
-              let win = AX.element(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute),
-              let axFrame = AX.frame(win), let primary = NSScreen.screens.first else { return nil }
-        // AX uses top-left origin on the primary display; AppKit uses bottom-left.
-        let frame = NSRect(x: axFrame.minX, y: primary.frame.maxY - axFrame.maxY, width: axFrame.width, height: axFrame.height)
-        func overlap(_ s: NSScreen) -> CGFloat { let r = s.frame.intersection(frame); return r.isNull ? 0 : r.width * r.height }
-        guard let best = NSScreen.screens.max(by: { overlap($0) < overlap($1) }), overlap(best) > 0 else { return nil }
-        return best
+        // App icons are the same size as in the Option+Tab Dock.
+        let thumbnails = Settings.showThumbnails
+        let dock = thumbnails ? [] : DockItems.current()
+        panels.show(tiles: tiles, selected: selected, thumbnails: thumbnails,
+                    iconsLikeDock: thumbnails ? nil : (dock.count, dock.filter { $0.separator != nil }.count))
     }
 
     func begin(backwards: Bool) {
@@ -69,7 +45,7 @@ final class SwitcherController {
         if Settings.showThumbnails {
             Thumbnails.shared.refresh(windows.map(\.id)) { [weak self] id, image in
                 guard let self, self.running else { return }
-                self.shownPanels.forEach { $0.setThumbnail(image, for: id) }
+                self.panels.setThumbnail(image, for: id)
             }
         }
 
@@ -86,7 +62,7 @@ final class SwitcherController {
 
     func moveRow(_ delta: Int) {
         guard running, !windows.isEmpty else { return }
-        let target = selected + delta * (shownPanels.first?.columns ?? 1)
+        let target = selected + delta * panels.columns
         if windows.indices.contains(target) { select(target) }
         showNow()
     }
@@ -208,13 +184,13 @@ final class SwitcherController {
     private func select(_ i: Int) {
         guard windows.indices.contains(i) else { return }
         selected = i
-        if isVisible { shownPanels.forEach { $0.setSelected(i) } }
+        panels.setSelected(i)
     }
 
     private func showNow() {
         pendingShow?.cancel()
         pendingShow = nil
-        guard running, !windows.isEmpty, !isVisible else { return }
+        guard running, !windows.isEmpty, !panels.isVisible else { return }
         showPanels()
     }
 
@@ -222,9 +198,7 @@ final class SwitcherController {
         running = false
         pendingShow?.cancel()
         pendingShow = nil
-        panels.forEach { $0.dismiss() }
-        shownPanels = []
-        screens = []
+        panels.dismiss()
         windows = []
     }
 }

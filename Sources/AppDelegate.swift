@@ -5,7 +5,7 @@ enum Settings {
     private static let d = UserDefaults.standard
 
     static func register() {
-        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "showOnAllDisplays": true, "switcherDisplay": "pointer", "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
+        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "dockEnabled": true, "showOnAllDisplays": true, "switcherDisplay": "pointer", "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
     }
 
     static var enabled: Bool {
@@ -19,6 +19,11 @@ enum Settings {
     static var includeHiddenApps: Bool {
         get { d.bool(forKey: "includeHiddenApps") }
         set { d.set(newValue, forKey: "includeHiddenApps") }
+    }
+    /// Option+Tab shows the Dock switcher.
+    static var dockEnabled: Bool {
+        get { d.bool(forKey: "dockEnabled") }
+        set { d.set(newValue, forKey: "dockEnabled") }
     }
     /// Also list windows on other Spaces (desktops), not just the current one.
     static var includeAllSpaces: Bool {
@@ -56,12 +61,14 @@ enum Settings {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let controller = SwitcherController()
-    private lazy var tap = HotkeyTap(controller: controller)
+    private let dock = DockController()
+    private lazy var tap = HotkeyTap(controller: controller, dock: dock)
     private let greenButtonTap = GreenButtonTap()
     private var permissionTimer: Timer?
     private var signalSources: [DispatchSourceSignal] = []
 
     private let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled), keyEquivalent: "")
+    private let dockItem = NSMenuItem(title: "Option+Tab Shows Dock", action: #selector(toggleDock), keyEquivalent: "")
     private let minimizedItem = NSMenuItem(title: "Include Minimized Windows", action: #selector(toggleMinimized), keyEquivalent: "")
     private let hiddenItem = NSMenuItem(title: "Include Windows of Hidden Apps", action: #selector(toggleHidden), keyEquivalent: "")
     private let allSpacesItem = NSMenuItem(title: "Include Windows from All Desktops", action: #selector(toggleAllSpaces), keyEquivalent: "")
@@ -155,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(header)
         menu.addItem(.separator())
         menu.addItem(enabledItem)
+        menu.addItem(dockItem)
         menu.addItem(minimizedItem)
         menu.addItem(hiddenItem)
         menu.addItem(allSpacesItem)
@@ -187,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateMenu() {
         enabledItem.state = Settings.enabled ? .on : .off
+        dockItem.state = Settings.dockEnabled ? .on : .off
         minimizedItem.state = Settings.includeMinimized ? .on : .off
         hiddenItem.state = Settings.includeHiddenApps ? .on : .off
         allSpacesItem.state = Settings.includeAllSpaces ? .on : .off
@@ -219,6 +228,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let trusted = AXIsProcessTrusted()
         permissionItem.title = trusted ? "Accessibility Permission: Granted" : "Grant Accessibility Permission…"
         permissionItem.state = trusted ? .on : .off
+    }
+
+    @objc private func toggleDock() {
+        Settings.dockEnabled.toggle()
+        if !Settings.dockEnabled { dock.close() }
+        updateMenu()
     }
 
     @objc private func toggleEnabled() {

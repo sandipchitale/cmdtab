@@ -20,6 +20,8 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>CmdTab asks Finder to empty the Trash when you choose Empty Trash in its Dock.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
