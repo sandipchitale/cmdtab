@@ -61,17 +61,17 @@ Option-click the green button to go full screen, which is what a plain click doe
 
 ![CmdTab Dock switcher: a Dock-like row of apps, folders and the Trash, with the selected app's name above it](screenshots/alttab-switcher.png)
 
-Press **Option+Tab** to bring up a Dock on the current display, laid out like the real one: Finder, your pinned apps with their spacers, the recent apps section (if it's on in Dock settings), running apps that aren't pinned, then a divider, your Dock folders (such as Downloads), and the Trash. Running apps have a dot under the icon, hidden apps get the ◯ badge, and the selected item's name floats above it. It's handy with several displays, or with the real Dock hidden.
+Press **Option+Tab** to bring up a Dock on the current display, laid out like the real one: Finder, your pinned apps (without any spacer gaps you added), the recent apps section (if it's on in Dock settings), running apps that aren't pinned, then a divider, your Dock folders (such as Downloads), and the Trash. Running apps have a dot under the icon, hidden apps get the ◯ badge, and the selected item's name floats above it. It's handy with several displays, or with the real Dock hidden.
 
 Unlike Cmd+Tab, it stays up after you let go of Option, until you pick something, press Esc or Option+Tab again, or click outside it.
 
-When the selected app is running, previews of its windows hang below its icon, and they follow the selection. Click a preview, or press ↓ and then Return, to bring that window forward. The previews follow the **Include Minimized Windows**, **Include Windows of Hidden Apps** and **Include Windows from All Desktops** settings. Live snapshots need **Screen Recording** permission (see [Views](#views)); without it, previews show the app icon and window title. Minimized windows and windows on other desktops show their last snapshot, or the app icon.
+With **Show Window Previews** on (it's off by default), previews of the selected running app's windows hang below its icon, and they follow the selection. Click a preview, or press ↓ and then Return, to bring that window forward. The previews follow the **Include Minimized Windows**, **Include Windows of Hidden Apps** and **Include Windows from All Desktops** settings. Live snapshots need **Screen Recording** permission (see [Views](#views)); without it, previews show the app icon and window title. Minimized windows and windows on other desktops show their last snapshot, or the app icon.
 
 | Key | Action |
 | --- | --- |
 | Tab / Shift+Tab | Next / previous item |
 | ← → | Next / previous item, or window preview while in the previews |
-| ↓ / ↑ | Into the selected app's window previews / back to the icons |
+| ↓ / ↑ | Into the selected app's window previews / back to the icons (with previews on) |
 | Return, or click | Open the item, like clicking it in the Dock, or bring the highlighted preview's window forward |
 | W | Close the highlighted preview's window |
 | Q | Quit the selected app |
@@ -95,6 +95,7 @@ The menu bar icon has these options:
 
 - **Enabled**: turn CmdTab on or off. While it's off, the system Cmd+Tab works as usual.
 - **Option+Tab Shows Dock**: turn the [Dock](#dock-optiontab) on or off. It works independently of **Enabled**.
+  - **Show Window Previews**: preview the selected app's windows under its icon in the Dock. Off by default.
 - **Include Minimized Windows** / **Include Windows of Hidden Apps**: show or skip those windows.
 - **Include Windows from All Desktops**: also list windows on other Spaces (desktops), including full-screen ones. Picking one switches to its desktop. Off by default.
 - **Show App Icons** / **Show Window Thumbnails**: choose the view.

@@ -148,9 +148,8 @@ final class DockController {
             return SwitcherTile(icon: item.icon, name: item.name, title: title, isMinimized: false,
                                 isAppHidden: app?.isHidden ?? false, isRunning: app != nil)
         }
-        var separators: [Int: TileSeparator] = [:]
-        for (i, item) in items.enumerated() { if let sep = item.separator { separators[i] = sep } }
-        panels.show(tiles: tiles, selected: selected, thumbnails: false, dockStyle: true, separators: separators)
+        let dividers = Set(items.indices.filter { items[$0].dividerBefore })
+        panels.show(tiles: tiles, selected: selected, thumbnails: false, dockStyle: true, dividers: dividers)
     }
 
     private func select(_ i: Int) {
@@ -183,7 +182,7 @@ final class DockController {
     private func updatePreviews() {
         pendingPreviews = nil
         guard isOpen else { return }
-        let app = items.indices.contains(selected) ? items[selected].runningApp : nil
+        let app = Settings.dockPreviews && items.indices.contains(selected) ? items[selected].runningApp : nil
         previewWindows = app.map { WindowManager.shared.currentWindows(of: $0) } ?? []
         previewSelected = nil
         showPreviews()

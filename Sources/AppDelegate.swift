@@ -5,7 +5,7 @@ enum Settings {
     private static let d = UserDefaults.standard
 
     static func register() {
-        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "dockEnabled": true, "showOnAllDisplays": true, "switcherDisplay": "pointer", "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
+        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "dockEnabled": true, "dockPreviews": false, "showOnAllDisplays": true, "switcherDisplay": "pointer", "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
     }
 
     static var enabled: Bool {
@@ -24,6 +24,11 @@ enum Settings {
     static var dockEnabled: Bool {
         get { d.bool(forKey: "dockEnabled") }
         set { d.set(newValue, forKey: "dockEnabled") }
+    }
+    /// The Option+Tab Dock previews the selected app's windows under its icon.
+    static var dockPreviews: Bool {
+        get { d.bool(forKey: "dockPreviews") }
+        set { d.set(newValue, forKey: "dockPreviews") }
     }
     /// Also list windows on other Spaces (desktops), not just the current one.
     static var includeAllSpaces: Bool {
@@ -69,6 +74,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private let enabledItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled), keyEquivalent: "")
     private let dockItem = NSMenuItem(title: "Option+Tab Shows Dock", action: #selector(toggleDock), keyEquivalent: "")
+    private let dockPreviewsItem: NSMenuItem = {
+        let item = NSMenuItem(title: "Show Window Previews", action: #selector(toggleDockPreviews), keyEquivalent: "")
+        item.indentationLevel = 1
+        return item
+    }()
     private let minimizedItem = NSMenuItem(title: "Include Minimized Windows", action: #selector(toggleMinimized), keyEquivalent: "")
     private let hiddenItem = NSMenuItem(title: "Include Windows of Hidden Apps", action: #selector(toggleHidden), keyEquivalent: "")
     private let allSpacesItem = NSMenuItem(title: "Include Windows from All Desktops", action: #selector(toggleAllSpaces), keyEquivalent: "")
@@ -163,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(enabledItem)
         menu.addItem(dockItem)
+        menu.addItem(dockPreviewsItem)
         menu.addItem(minimizedItem)
         menu.addItem(hiddenItem)
         menu.addItem(allSpacesItem)
@@ -196,6 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateMenu() {
         enabledItem.state = Settings.enabled ? .on : .off
         dockItem.state = Settings.dockEnabled ? .on : .off
+        dockPreviewsItem.state = Settings.dockPreviews ? .on : .off
         minimizedItem.state = Settings.includeMinimized ? .on : .off
         hiddenItem.state = Settings.includeHiddenApps ? .on : .off
         allSpacesItem.state = Settings.includeAllSpaces ? .on : .off
@@ -228,6 +240,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let trusted = AXIsProcessTrusted()
         permissionItem.title = trusted ? "Accessibility Permission: Granted" : "Grant Accessibility Permission…"
         permissionItem.state = trusted ? .on : .off
+    }
+
+    @objc private func toggleDockPreviews() {
+        Settings.dockPreviews.toggle()
+        updateMenu()
     }
 
     @objc private func toggleDock() {
@@ -268,9 +285,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateMenu()
     }
 
-    /// The display choices only matter while the switcher isn't shown on every display.
+    /// The display choices only matter while the switcher isn't shown on every display, and Dock previews while the
+    /// Dock is on.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        displayItems.contains(item) ? !Settings.showOnAllDisplays : true
+        if displayItems.contains(item) { return !Settings.showOnAllDisplays }
+        if item == dockPreviewsItem { return Settings.dockEnabled }
+        return true
     }
 
     @objc private func showIcons() {

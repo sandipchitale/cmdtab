@@ -11,8 +11,8 @@ struct DockItem {
 
     let kind: Kind
     let name: String
-    /// A Dock spacer or section divider in front of this item.
-    var separator: TileSeparator?
+    /// A section divider in front of this item, like the Dock's.
+    var dividerBefore = false
 
     var runningApp: NSRunningApplication? {
         if case .app(_, _, let running) = kind { return running }
@@ -29,7 +29,7 @@ struct DockItem {
     }
 }
 
-/// Reads what the real Dock shows, in Dock order, from its own preferences (com.apple.dock): pinned apps (with
+/// Reads what the real Dock shows, in Dock order, from its own preferences (com.apple.dock): pinned apps (without
 /// spacers), the recent apps section, running apps that aren't pinned, then folders and stacks, then the Trash.
 /// Adapted from WindowRing's DockDiscovery.
 enum DockItems {
@@ -48,13 +48,13 @@ enum DockItems {
 
         var items: [DockItem] = []
         var seen = Set<String>() // bundle ids, or paths for apps without one
-        var pending: TileSeparator?
+        var dividerNext = false
 
         func add(_ item: DockItem) {
             var item = item
-            // A separator only makes sense between two items, and a divider wins over a plain gap.
-            if !items.isEmpty { item.separator = pending }
-            pending = nil
+            // A divider only makes sense between two items.
+            item.dividerBefore = dividerNext && !items.isEmpty
+            dividerNext = false
             items.append(item)
         }
 
@@ -82,20 +82,17 @@ enum DockItems {
         // Finder always leads the Dock; it isn't stored with the pinned apps.
         addApp(tile: ["bundle-identifier": "com.apple.finder", "file-label": "Finder"])
 
-        // Pinned apps, with their spacers.
+        // Pinned apps. Spacers (the gaps you can add to the Dock) are left out.
         for entry in entries("persistent-apps") {
             let type = entry["tile-type"] as? String ?? "file-tile"
-            if type.hasSuffix("spacer-tile") {
-                if pending == nil { pending = .space }
-                continue
-            }
+            if type.hasSuffix("spacer-tile") { continue }
             if let tile = entry["tile-data"] as? [String: Any] { addApp(tile: tile) }
         }
 
         // The recent apps section, which also holds running apps that aren't pinned. Without it, those simply follow
         // the pinned apps.
         let showRecents = prefs?.object(forKey: "show-recents") as? Bool ?? true
-        if showRecents { pending = .divider }
+        if showRecents { dividerNext = true }
         if showRecents {
             for entry in entries("recent-apps") {
                 if let tile = entry["tile-data"] as? [String: Any] { addApp(tile: tile) }
@@ -104,7 +101,7 @@ enum DockItems {
         for app in running { addRunning(app) }
 
         // Folders and stacks, then the Trash, after a divider.
-        pending = .divider
+        dividerNext = true
         for entry in entries("persistent-others") {
             guard let tile = entry["tile-data"] as? [String: Any],
                   let s = (tile["file-data"] as? [String: Any])?["_CFURLString"] as? String,

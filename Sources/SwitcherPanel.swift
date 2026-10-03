@@ -62,14 +62,6 @@ func wrapped(_ index: Int, by delta: Int, count: Int) -> Int {
     ((index + delta) % count + count) % count
 }
 
-/// What sits in front of a tile in the Dock-style single row.
-enum TileSeparator {
-    /// An empty slot, like a Dock spacer.
-    case space
-    /// A thin vertical line, like the Dock's section divider.
-    case divider
-}
-
 /// Where a panel goes on its screen.
 enum PanelPlacement {
     case centered
@@ -107,10 +99,10 @@ final class SwitcherPanel: OverlayPanel {
     private let cornerRadius: CGFloat = 26
     /// The margin around icon tiles. Thumbnail tiles carry their own title row, so they get `padding`.
     private static let iconPadding: CGFloat = 14
-    /// In the Dock-style row: the space between icons, and the extra gap for a spacer or divider, per icon side.
+    /// In the Dock-style row: the space between icons, and the extra gap for a divider, per icon side.
     private static let rowSpacingRatio: CGFloat = 0.1, gapRatio: CGFloat = 0.5
 
-    /// The icon size of a Dock-style row of `count` items with `gaps` spacers/dividers across `area`, at most 120.
+    /// The icon size of a Dock-style row of `count` items with `gaps` dividers across `area`, at most 120.
     static func dockIconSide(count: Int, gaps: Int, area: NSRect) -> CGFloat {
         let n = CGFloat(max(count, 1))
         let fitted = (area.width * 0.92 - iconPadding * 2) / (n + rowSpacingRatio * (n - 1) + gapRatio * CGFloat(gaps))
@@ -158,11 +150,11 @@ final class SwitcherPanel: OverlayPanel {
     }
 
     /// Lays out `tiles` as a grid, or (with `dockStyle`) like the Dock: one row whose icons shrink to fit the width,
-    /// with gaps and dividers in front of the tiles listed in `separators`, and the selected name above its icon.
-    /// `iconsLikeDock` (count and spacers of the Dock) sizes icon tiles the same as the Dock-style row would be.
+    /// with section dividers in front of the tiles listed in `dividers`, and the selected name above its icon.
+    /// `iconsLikeDock` (count and dividers of the Dock) sizes icon tiles the same as the Dock-style row would be.
     /// `placement` and `maxTileWidth` let the Dock hang a small strip of window previews under an icon.
     func show(tiles: [SwitcherTile], selected: Int, on screen: NSScreen, thumbnails: Bool,
-              dockStyle: Bool = false, separators: [Int: TileSeparator] = [:], iconsLikeDock: (count: Int, gaps: Int)? = nil,
+              dockStyle: Bool = false, dividers: Set<Int> = [], iconsLikeDock: (count: Int, gaps: Int)? = nil,
               placement: PanelPlacement = .centered, maxTileWidth: CGFloat? = nil) {
         hideTooltip()
         tilesShown = tiles
@@ -215,8 +207,8 @@ final class SwitcherPanel: OverlayPanel {
         var width: CGFloat = 0
         var height: CGFloat = 0
 
-        // Dock-style row: the icon size that fits every tile, plus half-tile gaps for separators, across the screen.
-        let gapCount = separators.keys.filter { $0 > 0 && $0 < tiles.count }.count
+        // Dock-style row: the icon size that fits every tile, plus half-tile gaps for dividers, across the screen.
+        let gapCount = dividers.filter { $0 > 0 && $0 < tiles.count }.count
         let fitted = Self.dockIconSide(count: tiles.count, gaps: gapCount, area: area)
         if dockStyle && !thumbnails && fitted >= 36 {
             let side = fitted
@@ -228,8 +220,8 @@ final class SwitcherPanel: OverlayPanel {
             for i in tiles.indices {
                 if i > 0 {
                     x += rowSpacing
-                    if let sep = separators[i] {
-                        if sep == .divider { dividerXs.append(x + gap / 2 - rowSpacing / 2) }
+                    if dividers.contains(i) {
+                        dividerXs.append(x + gap / 2 - rowSpacing / 2)
                         x += gap
                     }
                 }

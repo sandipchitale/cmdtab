@@ -48,7 +48,7 @@ final class PanelGroup {
 
     /// Shows the grid on every display, or on the one with the pointer or the active window, per the settings.
     func show(tiles: [SwitcherTile], selected: Int, thumbnails: Bool,
-              dockStyle: Bool = false, separators: [Int: TileSeparator] = [:], iconsLikeDock: (count: Int, gaps: Int)? = nil) {
+              dockStyle: Bool = false, dividers: Set<Int> = [], iconsLikeDock: (count: Int, gaps: Int)? = nil) {
         if screens.isEmpty {
             let pointer = NSScreen.containing(NSEvent.mouseLocation)
             if Settings.showOnAllDisplays {
@@ -61,7 +61,7 @@ final class PanelGroup {
         shownPanels = panels[..<screens.count]
         for (panel, screen) in zip(shownPanels, screens) {
             panel.show(tiles: tiles, selected: selected, on: screen, thumbnails: thumbnails,
-                       dockStyle: dockStyle, separators: separators, iconsLikeDock: iconsLikeDock)
+                       dockStyle: dockStyle, dividers: dividers, iconsLikeDock: iconsLikeDock)
         }
     }
 

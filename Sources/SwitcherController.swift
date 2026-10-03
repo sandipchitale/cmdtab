@@ -31,7 +31,7 @@ final class SwitcherController {
         let thumbnails = Settings.showThumbnails
         let dock = thumbnails ? [] : DockItems.current()
         panels.show(tiles: tiles, selected: selected, thumbnails: thumbnails,
-                    iconsLikeDock: thumbnails ? nil : (dock.count, dock.filter { $0.separator != nil }.count))
+                    iconsLikeDock: thumbnails ? nil : (dock.count, dock.filter(\.dividerBefore).count))
     }
 
     func begin(backwards: Bool) {
