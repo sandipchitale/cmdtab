@@ -235,7 +235,8 @@ final class WindowManager {
                 guard let wid = AX.windowID(win), !seen.contains(wid) else { continue }
                 if let s = AX.size(win), s.width < 40 || s.height < 40 { continue }
 
-                let minimized = AX.bool(win, kAXMinimizedAttribute) ?? false
+                // A window that's on screen isn't minimized, whatever the app says (Electron apps sometimes claim it is).
+                let minimized = (AX.bool(win, kAXMinimizedAttribute) ?? false) && zIndex[wid] == nil
                 if minimized && !includeMinimized { continue }
 
                 // Not minimized, not hidden, yet not on screen => it lives on another Space (or is a background tab).

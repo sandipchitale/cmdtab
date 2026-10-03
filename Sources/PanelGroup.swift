@@ -7,18 +7,22 @@ final class PanelGroup {
     var onHover: ((Int) -> Void)?
     var onClick: ((Int) -> Void)?
     var onRightClick: ((Int, NSEvent) -> Void)?
+    var onPreviewHover: ((Int) -> Void)?
+    var onPreviewClick: ((Int) -> Void)?
 
     private var panels: [SwitcherPanel] = []
     private var shownPanels: ArraySlice<SwitcherPanel> = []
     /// The displays for this session, picked when the grid first appears so redraws don't make it jump.
     private var screens: [NSScreen] = []
+    /// Window-preview strips, one under each shown panel (the Dock's selected app).
+    private var previewPanels: [SwitcherPanel] = []
 
     var isVisible: Bool { shownPanels.first?.isVisible ?? false }
     var columns: Int { shownPanels.first?.columns ?? 1 }
 
     /// Whether `point` (screen coordinates) is on one of the shown panels.
     func contains(_ point: NSPoint) -> Bool {
-        shownPanels.contains { $0.isVisible && NSMouseInRect(point, $0.frame, false) }
+        (Array(shownPanels) + previewPanels).contains { $0.isVisible && NSMouseInRect(point, $0.frame, false) }
     }
 
     private func makePanel() -> SwitcherPanel {
@@ -57,7 +61,36 @@ final class PanelGroup {
         shownPanels.forEach { $0.setThumbnail(image, for: id) }
     }
 
+    /// Shows `tiles` as window previews hanging under tile `index` of each shown panel; `selected` nil highlights none.
+    func showPreviews(tiles: [SwitcherTile], under index: Int, selected: Int?) {
+        while previewPanels.count < shownPanels.count {
+            let panel = SwitcherPanel()
+            panel.onHover = { [weak self] i in self?.onPreviewHover?(i) }
+            panel.onClick = { [weak self] i in self?.onPreviewClick?(i) }
+            previewPanels.append(panel)
+        }
+        previewPanels[shownPanels.count...].forEach { $0.dismiss() }
+        for (panel, preview) in zip(shownPanels, previewPanels) {
+            guard let tile = panel.tileScreenFrame(index), let screen = panel.screen else { continue }
+            preview.show(tiles: tiles, selected: selected ?? -1, on: screen, thumbnails: true,
+                         placement: .below(topCenter: NSPoint(x: tile.midX, y: panel.frame.minY - 8)), maxTileWidth: 240)
+        }
+    }
+
+    func setPreviewSelected(_ index: Int?) {
+        previewPanels.forEach { if $0.isVisible { $0.setSelected(index ?? -1) } }
+    }
+
+    func setPreviewThumbnail(_ image: CGImage, for id: CGWindowID) {
+        previewPanels.forEach { $0.setThumbnail(image, for: id) }
+    }
+
+    func hidePreviews() {
+        previewPanels.forEach { $0.dismiss() }
+    }
+
     func dismiss() {
+        hidePreviews()
         panels.forEach { $0.dismiss() }
         shownPanels = []
         screens = []

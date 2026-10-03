@@ -146,10 +146,11 @@ final class HotkeyTap {
         let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         switch keycode {
         case Key.tab: dock.move(flags.contains(.maskShift) ? -1 : 1)
-        case Key.right: dock.move(1)
-        case Key.left: dock.move(-1)
-        case Key.down: dock.moveRow(1)
-        case Key.up: dock.moveRow(-1)
+        case Key.right: dock.moveHorizontal(1)
+        case Key.left: dock.moveHorizontal(-1)
+        case Key.down: dock.moveDown()
+        case Key.up: dock.moveUp()
+        case Key.w: if !isRepeat { dock.closePreviewWindow() }
         case Key.returnKey, Key.enter: dock.activate()
         case Key.escape: dock.close()
         case Key.q: if !isRepeat { dock.quitSelected() }

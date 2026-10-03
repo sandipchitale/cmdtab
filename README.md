@@ -65,10 +65,15 @@ Press **Option+Tab** to bring up a Dock on the current display, laid out like th
 
 Unlike Cmd+Tab, it stays up after you let go of Option, until you pick something, press Esc or Option+Tab again, or click outside it.
 
+When the selected app is running, previews of its windows hang below its icon, and they follow the selection. Click a preview, or press ↓ and then Return, to bring that window forward. The previews follow the **Include Minimized Windows**, **Include Windows of Hidden Apps** and **Include Windows from All Desktops** settings. Live snapshots need **Screen Recording** permission (see [Views](#views)); without it, previews show the app icon and window title. Minimized windows and windows on other desktops show their last snapshot, or the app icon.
+
 | Key | Action |
 | --- | --- |
-| Tab / Shift+Tab, ← → | Next / previous item |
-| Return, or click | Open the item, like clicking it in the Dock |
+| Tab / Shift+Tab | Next / previous item |
+| ← → | Next / previous item, or window preview while in the previews |
+| ↓ / ↑ | Into the selected app's window previews / back to the icons |
+| Return, or click | Open the item, like clicking it in the Dock, or bring the highlighted preview's window forward |
+| W | Close the highlighted preview's window |
 | Q | Quit the selected app |
 | H | Hide / show the selected app |
 | Esc, Option+Tab, or click outside | Close |

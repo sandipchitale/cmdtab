@@ -58,6 +58,13 @@ enum TileSeparator {
     case divider
 }
 
+/// Where a panel goes on its screen.
+enum PanelPlacement {
+    case centered
+    /// Hanging below a point (screen coordinates), centered on it: the Dock's window previews.
+    case below(topCenter: NSPoint)
+}
+
 /// The floating Alt+Tab-style grid.
 @MainActor
 final class SwitcherPanel: OverlayPanel {
@@ -141,8 +148,10 @@ final class SwitcherPanel: OverlayPanel {
     /// Lays out `tiles` as a grid, or (with `dockStyle`) like the Dock: one row whose icons shrink to fit the width,
     /// with gaps and dividers in front of the tiles listed in `separators`, and the selected name above its icon.
     /// `iconsLikeDock` (count and spacers of the Dock) sizes icon tiles the same as the Dock-style row would be.
+    /// `placement` and `maxTileWidth` let the Dock hang a small strip of window previews under an icon.
     func show(tiles: [SwitcherTile], selected: Int, on screen: NSScreen, thumbnails: Bool,
-              dockStyle: Bool = false, separators: [Int: TileSeparator] = [:], iconsLikeDock: (count: Int, gaps: Int)? = nil) {
+              dockStyle: Bool = false, separators: [Int: TileSeparator] = [:], iconsLikeDock: (count: Int, gaps: Int)? = nil,
+              placement: PanelPlacement = .centered, maxTileWidth: CGFloat? = nil) {
         hideTooltip()
         tilesShown = tiles
         items.forEach { $0.removeFromSuperview() }
@@ -176,8 +185,10 @@ final class SwitcherPanel: OverlayPanel {
             let side = max(Self.dockIconSide(count: dock.count, gaps: dock.gaps, area: area), 36)
             iconSides = [side] + iconSides.filter { $0 < side }
         }
+        var thumbnailWidths: [CGFloat] = [320, 280, 240, 200, 170, 140]
+        if let maxTileWidth { thumbnailWidths = thumbnailWidths.filter { $0 <= maxTileWidth } }
         let sizes: [CGSize] = thumbnails
-            ? ([320, 280, 240, 200, 170, 140] as [CGFloat]).map { CGSize(width: $0, height: ($0 * 0.62 + SwitcherItemView.headerHeight).rounded()) }
+            ? thumbnailWidths.map { CGSize(width: $0, height: ($0 * 0.62 + SwitcherItemView.headerHeight).rounded()) }
             : iconSides.map { CGSize(width: $0, height: $0) }
 
         // The same margin on all four sides.
@@ -228,7 +239,11 @@ final class SwitcherPanel: OverlayPanel {
             }
         }
 
-        let frame = NSRect(x: area.midX - width / 2, y: area.midY - height / 2, width: width, height: height)
+        var frame = NSRect(x: area.midX - width / 2, y: area.midY - height / 2, width: width, height: height)
+        if case .below(let top) = placement {
+            frame.origin = NSPoint(x: min(max(top.x - width / 2, area.minX), area.maxX - width),
+                                   y: max(top.y - height, area.minY))
+        }
         setFrame(frame, display: false)
         content.frame = NSRect(x: 0, y: 0, width: width, height: height)
         border.frame = content.bounds
@@ -310,6 +325,12 @@ final class SwitcherPanel: OverlayPanel {
 
     func setThumbnail(_ image: CGImage, for id: CGWindowID) {
         for item in items where item.windowID == id { item.setThumbnail(image) }
+    }
+
+    /// Where tile `index` is on screen.
+    func tileScreenFrame(_ index: Int) -> NSRect? {
+        guard items.indices.contains(index) else { return nil }
+        return items[index].frame.offsetBy(dx: frame.minX, dy: frame.minY)
     }
 
     func dismiss() {
