@@ -51,8 +51,9 @@ struct SwitcherTile {
 }
 
 extension SwitcherTile {
-    init(window w: SwitcherWindow) {
-        self.init(icon: w.app.icon ?? NSImage(), name: w.app.localizedName ?? w.title, title: w.title,
+    /// Named after the app, or after the window itself with `nameByTitle` (when the app's icon appears more than once).
+    init(window w: SwitcherWindow, nameByTitle: Bool = false) {
+        self.init(icon: w.app.icon ?? NSImage(), name: nameByTitle ? w.title : w.app.localizedName ?? w.title, title: w.title,
                   isMinimized: w.isMinimized, isAppHidden: w.isAppHidden, windowID: w.id)
     }
 }

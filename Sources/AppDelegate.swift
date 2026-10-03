@@ -187,6 +187,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(iconsItem)
         menu.addItem(switcherPreviewItem)
         menu.addItem(thumbnailsItem)
+        // The Cmd+Tab options sit under "Cmd+Tab Shows Windows".
+        for item in [minimizedItem, hiddenItem, allSpacesItem, iconsItem, thumbnailsItem] { item.indentationLevel = 3 }
+        menu.addItem(.separator())
+        menu.addItem(dockItem)
+        menu.addItem(dockPreviewsItem)
+        menu.addItem(.separator())
+        // Where the switcher and the Dock appear.
         let displayMenu = NSMenu()
         for item in displayItems {
             item.target = self
@@ -195,12 +202,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let displayItem = NSMenuItem(title: "Show On", action: nil, keyEquivalent: "")
         displayItem.submenu = displayMenu
         menu.addItem(displayItem)
-        // The Cmd+Tab options sit under "Cmd+Tab Shows Windows".
-        for item in [minimizedItem, hiddenItem, allSpacesItem, iconsItem, thumbnailsItem, displayItem] { item.indentationLevel = 3 }
-        menu.addItem(.separator())
-        menu.addItem(dockItem)
-        menu.addItem(dockPreviewsItem)
-        menu.addItem(.separator())
         let appearanceMenu = NSMenu()
         for item in appearanceItems {
             item.target = self
@@ -309,11 +310,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// The Cmd+Tab options only matter while Cmd+Tab shows windows (the preview only in icon view), and Dock previews
-    /// while the Dock is on.
+    /// while the Dock is on. Show On applies to both, so it's always available.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item == dockPreviewsItem { return Settings.dockEnabled }
         if item == switcherPreviewItem { return Settings.enabled && !Settings.showThumbnails }
-        if [minimizedItem, hiddenItem, allSpacesItem, iconsItem, thumbnailsItem].contains(item) || displayItems.contains(item) {
+        if [minimizedItem, hiddenItem, allSpacesItem, iconsItem, thumbnailsItem].contains(item) {
             return Settings.enabled
         }
         return true

@@ -32,7 +32,7 @@ W, Q, M and H act on the selected tile and keep the switcher open, so you can ti
 
 ## Views
 
-- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, and its app name floats in a bubble above it, like the Dock's. Rest the pointer on an icon to see that window's title in a tooltip. With **Show Window Preview** on, a snapshot of the selected window also hangs below its icon.
+- **App icons** (default): one large app icon per window, styled like the native macOS switcher. The selected icon gets a darker rounded square that hugs it, and its app name floats in a bubble above it, like the Dock's. When an app has more than one window listed, the bubble shows the window's title instead, so you can tell them apart. Rest the pointer on an icon to see that window's title in a tooltip. With **Show Window Preview** on, a snapshot of the selected window also hangs below its icon.
 - **Window thumbnails**: a live snapshot of each window, with the app icon and window title above it. The selected tile gets the same darker rounded background as in icon view.
 
 On macOS 26 and later, the switcher panel uses the same Liquid Glass material as the native switcher. Earlier versions get a blurred, tinted panel instead. Either way it follows the **Appearance** setting.
@@ -98,9 +98,9 @@ The menu bar icon has these options:
   - **Include Windows from All Desktops**: also list windows on other Spaces (desktops), including full-screen ones. Picking one switches to its desktop. Off by default.
   - **Show App Icons** / **Show Window Thumbnails**: choose the view.
     - **Show Window Preview** (icon view, off by default): a snapshot of the selected window hangs below its icon, like the Dock's window previews. Click it to switch to that window.
-  - **Show On**: where the switcher appears. **All Displays** (the default) shows it on every display; arrow keys follow the grid on the pointer's display. **Display with Pointer** or **Display with Active Window** (the display showing most of the frontmost window) shows it on just one.
 - **Option+Tab Shows Dock**: turn the [Dock](#dock-optiontab) on or off. It works independently of **Cmd+Tab Shows Windows**.
   - **Show Window Previews**: preview the selected app's windows under its icon in the Dock. Off by default.
+- **Show On**: where the switcher and the Dock appear. **All Displays** (the default) shows them on every display; arrow keys follow the grid on the pointer's display. **Display with Pointer** or **Display with Active Window** (the display showing most of the frontmost window) shows them on just one.
 - **Appearance**: System, Light or Dark, for the switcher panel only.
 - **Green Button Toggles Maximize Instead of Full Screen**: see [Green button](#green-button). On by default.
 - **Launch at Login**

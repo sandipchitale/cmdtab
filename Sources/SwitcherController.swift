@@ -39,7 +39,10 @@ final class SwitcherController {
     }
 
     private func showPanels() {
-        let tiles = windows.map(SwitcherTile.init(window:))
+        // An app's name doesn't tell its windows apart, so apps with several windows listed show the window title.
+        var windowCounts: [pid_t: Int] = [:]
+        for w in windows { windowCounts[w.app.processIdentifier, default: 0] += 1 }
+        let tiles = windows.map { SwitcherTile(window: $0, nameByTitle: windowCounts[$0.app.processIdentifier, default: 0] > 1) }
         // App icons are the same size as in the Option+Tab Dock.
         let thumbnails = Settings.showThumbnails
         let dock = thumbnails ? [] : DockItems.current()

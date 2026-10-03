@@ -195,7 +195,7 @@ final class DockController {
 
     private func showPreviews() {
         guard !previewWindows.isEmpty else { return panels.hidePreviews() }
-        panels.showPreviews(tiles: previewWindows.map(SwitcherTile.init(window:)), under: selected, selected: previewSelected)
+        panels.showPreviews(tiles: previewWindows.map { SwitcherTile(window: $0) }, under: selected, selected: previewSelected)
     }
 
     private func clearPreviews() {
