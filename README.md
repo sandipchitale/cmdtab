@@ -65,6 +65,7 @@ The menu bar icon has these options:
 - **Include Minimized Windows** / **Include Windows of Hidden Apps**: show or skip those windows.
 - **Include Windows from All Desktops**: also list windows on other Spaces (desktops), including full-screen ones. Picking one switches to its desktop. Off by default.
 - **Show App Icons** / **Show Window Thumbnails**: choose the view.
+- **Show on All Displays**: show the switcher on every display, not just the one with the pointer. On by default. Arrow keys follow the grid on the pointer's display. When it's off, choose **On Display with Pointer** or **On Display with Active Window** (the display showing most of the frontmost window).
 - **Appearance**: System, Light or Dark, for the switcher panel only.
 - **Green Button Toggles Maximize Instead of Full Screen**: see [Green button](#green-button). On by default.
 - **Launch at Login**

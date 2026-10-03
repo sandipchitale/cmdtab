@@ -5,7 +5,7 @@ enum Settings {
     private static let d = UserDefaults.standard
 
     static func register() {
-        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
+        d.register(defaults: ["enabled": true, "includeMinimized": true, "includeHiddenApps": true, "includeAllSpaces": false, "showOnAllDisplays": true, "switcherDisplay": "pointer", "showThumbnails": false, "appearance": "system", "greenButtonZooms": true])
     }
 
     static var enabled: Bool {
@@ -24,6 +24,17 @@ enum Settings {
     static var includeAllSpaces: Bool {
         get { d.bool(forKey: "includeAllSpaces") }
         set { d.set(newValue, forKey: "includeAllSpaces") }
+    }
+    /// Show the switcher on every display, not just the one with the pointer.
+    static var showOnAllDisplays: Bool {
+        get { d.bool(forKey: "showOnAllDisplays") }
+        set { d.set(newValue, forKey: "showOnAllDisplays") }
+    }
+    /// With showOnAllDisplays off, where the switcher appears: "pointer" (the display with the mouse pointer) or
+    /// "activeWindow" (the display with the frontmost window).
+    static var switcherDisplay: String {
+        get { d.string(forKey: "switcherDisplay") ?? "pointer" }
+        set { d.set(newValue, forKey: "switcherDisplay") }
     }
     static var showThumbnails: Bool {
         get { d.bool(forKey: "showThumbnails") }
@@ -54,6 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let minimizedItem = NSMenuItem(title: "Include Minimized Windows", action: #selector(toggleMinimized), keyEquivalent: "")
     private let hiddenItem = NSMenuItem(title: "Include Windows of Hidden Apps", action: #selector(toggleHidden), keyEquivalent: "")
     private let allSpacesItem = NSMenuItem(title: "Include Windows from All Desktops", action: #selector(toggleAllSpaces), keyEquivalent: "")
+    private let allDisplaysItem = NSMenuItem(title: "Show on All Displays", action: #selector(toggleAllDisplays), keyEquivalent: "")
+    private let displayItems = [("On Display with Pointer", "pointer"), ("On Display with Active Window", "activeWindow")].map { title, value in
+        let item = NSMenuItem(title: title, action: #selector(setSwitcherDisplay(_:)), keyEquivalent: "")
+        item.representedObject = value
+        item.indentationLevel = 1
+        return item
+    }
     private let iconsItem = NSMenuItem(title: "Show App Icons", action: #selector(showIcons), keyEquivalent: "")
     private let thumbnailsItem = NSMenuItem(title: "Show Window Thumbnails", action: #selector(showThumbnails), keyEquivalent: "")
     private let appearanceItems = [("System", "system"), ("Light", "light"), ("Dark", "dark")].map { title, value in
@@ -143,6 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(iconsItem)
         menu.addItem(thumbnailsItem)
+        menu.addItem(allDisplaysItem)
+        displayItems.forEach(menu.addItem)
         let appearanceMenu = NSMenu()
         for item in appearanceItems {
             item.target = self
@@ -170,6 +190,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         minimizedItem.state = Settings.includeMinimized ? .on : .off
         hiddenItem.state = Settings.includeHiddenApps ? .on : .off
         allSpacesItem.state = Settings.includeAllSpaces ? .on : .off
+        allDisplaysItem.state = Settings.showOnAllDisplays ? .on : .off
+        for item in displayItems {
+            item.state = item.representedObject as? String == Settings.switcherDisplay ? .on : .off
+        }
         iconsItem.state = Settings.showThumbnails ? .off : .on
         thumbnailsItem.state = Settings.showThumbnails ? .on : .off
         for item in appearanceItems {
@@ -216,6 +240,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleAllSpaces() {
         Settings.includeAllSpaces.toggle()
         updateMenu()
+    }
+
+    @objc private func toggleAllDisplays() {
+        Settings.showOnAllDisplays.toggle()
+        updateMenu()
+    }
+
+    @objc private func setSwitcherDisplay(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String else { return }
+        Settings.switcherDisplay = value
+        updateMenu()
+    }
+
+    /// The display choices only matter while the switcher isn't shown on every display.
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        displayItems.contains(item) ? !Settings.showOnAllDisplays : true
     }
 
     @objc private func showIcons() {

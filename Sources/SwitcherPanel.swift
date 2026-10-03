@@ -46,6 +46,8 @@ final class SwitcherPanel: OverlayPanel {
     private let content = NSView()
     /// Only in the pre-Liquid Glass fallback: tones down the blur's see-through look.
     private var tint: NSView?
+    /// A hairline in the opposite tone of the panel, so it doesn't melt into a matching light or dark background.
+    private let border = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let tooltip = TooltipWindow()
     private var pendingTooltip: DispatchWorkItem?
@@ -93,6 +95,12 @@ final class SwitcherPanel: OverlayPanel {
             background.addSubview(content)
         }
 
+        border.wantsLayer = true
+        border.layer?.cornerRadius = cornerRadius
+        border.layer?.borderWidth = 1
+        border.autoresizingMask = [.width, .height]
+        content.addSubview(border)
+
         titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
         titleLabel.textColor = .labelColor
         titleLabel.alignment = .center
@@ -100,7 +108,7 @@ final class SwitcherPanel: OverlayPanel {
         content.addSubview(titleLabel)
     }
 
-    func show(windows: [SwitcherWindow], selected: Int) {
+    func show(windows: [SwitcherWindow], selected: Int, on screen: NSScreen) {
         hideTooltip()
         windowsShown = windows
         items.forEach { $0.removeFromSuperview() }
@@ -108,13 +116,15 @@ final class SwitcherPanel: OverlayPanel {
 
         let mouse = NSEvent.mouseLocation
         mouseAtShow = mouse
-        let area = NSScreen.containing(mouse).visibleFrame
+        let area = screen.visibleFrame
 
         switch Settings.appearance {
         case "light": contentAppearance = NSAppearance(named: .aqua)!
         case "dark": contentAppearance = NSAppearance(named: .darkAqua)!
         default: contentAppearance = NSApp.effectiveAppearance // follow the system
         }
+        let dark = contentAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        border.layer?.borderColor = (dark ? NSColor.white.withAlphaComponent(0.3) : NSColor.black.withAlphaComponent(0.25)).cgColor
         if let tint {
             contentAppearance.performAsCurrentDrawingAppearance {
                 tint.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.55).cgColor
@@ -146,6 +156,7 @@ final class SwitcherPanel: OverlayPanel {
         let frame = NSRect(x: area.midX - width / 2, y: area.midY - height / 2, width: width, height: height)
         setFrame(frame, display: false)
         content.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        border.frame = content.bounds
         invalidateShadow()
 
         titleLabel.isHidden = thumbnails
@@ -171,6 +182,7 @@ final class SwitcherPanel: OverlayPanel {
             items.append(item)
         }
 
+        content.addSubview(border, positioned: .above, relativeTo: nil)
         setSelected(selected)
         alphaValue = 1
         orderFrontRegardless()
