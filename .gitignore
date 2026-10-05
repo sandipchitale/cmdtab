@@ -1,0 +1,20 @@
+# Build output (build.sh)
+build/
+
+# Swift / Xcode artifacts
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Signing material (install.sh creates its certificate in a temp dir, but never commit keys)
+*.p12
+*.pem
+*.cer
+
+# macOS
+.DS_Store
+
+# Claude Code local settings
+.claude
